@@ -1,4 +1,4 @@
 module_declaration = { SOI ~ "module" ~ EOI }
 
-WHITESPACE = _{ " " }
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
 COMMENT = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
