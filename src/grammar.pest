@@ -10,7 +10,7 @@ block = { "{" ~ statement* ~ "}" }
 
 indexed_variable = { name ~ "[" ~ variable_index ~ "]" }
 variable_index = { "t" ~ ("-" ~ pos_integer)? }
-pos_integer = { ASCII_DIGIT+ }
+pos_integer = ${ ASCII_DIGIT+ }
 
 statement = { assignment }
 assignment = { indexed_variable ~ "=" ~ expression ~ ";" }
