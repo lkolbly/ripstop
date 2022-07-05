@@ -2,8 +2,10 @@ pub enum Type {
     Bit,
 }
 
+//Once the tree is generated, if any child has an invalid return type, it will return an error
+//For example, if the lhs and rhs of an assignment have different types, the compiler will return an error
 pub enum Node {
-    //This is the head of a module. The code within a module is entirely a child of the module
+    //This is the head of a module. The code within a module is entirely children of the module
     ModuleDeclaration {
         id: String,
         in_values: Vec<(Type, String)>,
@@ -22,7 +24,6 @@ pub enum Node {
     },
     //Unary operators only have one child
     //Maybe extract operators into their own enum of sorts (or maybe just unary/binary ops)? Might not be helpful though
-    //Once the tree is generated, if the child has an invalid Node type, it will return an error
     BitwiseInverse {
         child: Box<Node>,
     },
