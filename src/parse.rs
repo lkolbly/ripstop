@@ -5,6 +5,6 @@ use pest::Parser;
 struct RipstopParser;
 
 pub fn parse(toparse: &str) {
-  let parsed = RipstopParser::parse(Rule::module_declaration, toparse).expect("Parse failed!");
-  println!("{:?}", parsed);
+    let parsed = RipstopParser::parse(Rule::module_declaration, toparse).expect("Parse failed!");
+    println!("{:?}", parsed);
 }
