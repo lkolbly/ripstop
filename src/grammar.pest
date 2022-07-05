@@ -1,0 +1,4 @@
+module_declaration = { SOI ~ "module" ~ EOI }
+
+WHITESPACE = _{ " " }
+COMMENT = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
