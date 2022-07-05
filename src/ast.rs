@@ -31,6 +31,7 @@ pub enum Node {
         lhs: Box<Node>,
         rhs: Box<Node>,
     },
+    //TODO: Constants, VariableDeclaration, [Some way of handling scope], etc.
 }
 
 //This ripstop code:
