@@ -2,7 +2,7 @@ module_declaration = { SOI ~ "module" ~ name ~ variable_declaration_list ~ "->" 
 
 name = { (ASCII_ALPHA | "_")+ ~ (ASCII_ALPHANUMERIC | "_")* }
 
-variable_declaration_list = { "(" ~ (variable_declaration)* ~ (variable_declaration ~ ",")* ~ ")" }
+variable_declaration_list = { "(" ~ (variable_declaration)* ~ ("," ~ variable_declaration)* ~ ")" }
 variable_declaration = { variable_type ~ name }
 variable_type = { "bit" }
 
