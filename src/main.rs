@@ -14,17 +14,19 @@ use parse::parse;
 
 fn main() {
     println!("Hello, world!");
-    
-    let a = parse("module hello() -> (bit led) {
+
+    let a = parse(
+        "module hello() -> (bit led) {
         led[t] = ~led[t-1]; // Perform the bitwise NOT
-    }");
+    }",
+    );
     println!("{:#?}", a);
 
     //println!("{:?}", verify_node(&a, &HashSet::new()));
     //println!("{}", compile_ast(&a).unwrap());
     println!("{}", compile_module(&a));
 
-    let b = Node::ModuleDeclaration {
+    /*let b = Node::ModuleDeclaration {
         id: "add".to_string(),
         in_values: vec![(Type::Bit, "b".to_string()), (Type::Bit, "c".to_string())],
         out_values: vec![(Type::Bit, "a".to_string())],
@@ -50,7 +52,13 @@ fn main() {
                 }),
             }),
         }],
-    };
+    };*/
+    let b = parse(
+        "module add(bit b, bit c) -> (bit a) {
+        a[t] = b[t] + c[t];
+     }",
+    );
 
+    println!("{:#?}", b);
     println!("{}", compile_module(&b));
 }
