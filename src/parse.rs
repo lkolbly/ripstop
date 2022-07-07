@@ -1,12 +1,23 @@
 use crate::ast::Node;
 use crate::ast::Type;
 
+use lazy_static::lazy_static;
+
 use pest::iterators::Pair;
+use pest::prec_climber::Assoc;
+use pest::prec_climber::Operator;
+use pest::prec_climber::PrecClimber;
 use pest::Parser;
 
 #[derive(Parser)]
 #[grammar = "grammar.pest"]
 struct RipstopParser;
+
+lazy_static! {
+    static ref PREC_CLIMBER: PrecClimber<Rule> = PrecClimber::new(vec![
+        Operator::new(Rule::addition, Assoc::Left) | Operator::new(Rule::subtraction, Assoc::Left)
+    ]);
+}
 
 pub fn parse(toparse: &str) -> Node {
     let parsed = RipstopParser::parse(Rule::module_declaration, toparse)
@@ -25,7 +36,6 @@ pub fn parse(toparse: &str) -> Node {
                 out_values: parse_variable_declarations(inner_rules.next().unwrap()),
                 children: parse_block(inner_rules.next().unwrap()),
             },
-            Rule::expression => parse_value(inner_rules.next().unwrap()),
             Rule::assignment => Node::Assign {
                 lhs: Box::new(parse_value(inner_rules.next().unwrap())),
                 rhs: Box::new(parse_value(inner_rules.next().unwrap())),
@@ -47,7 +57,21 @@ pub fn parse(toparse: &str) -> Node {
                 },
                 _ => unreachable!(),
             },
-            Rule::statement => parse_value(inner_rules.next().unwrap()),
+            Rule::binary_operation => {
+                PREC_CLIMBER.climb(inner_rules, parse_value, |lhs, op, rhs| {
+                    match op.as_rule() {
+                        Rule::addition => Node::Add {
+                            lhs: Box::new(lhs),
+                            rhs: Box::new(rhs),
+                        },
+                        Rule::subtraction => Node::Subtract {
+                            lhs: Box::new(lhs),
+                            rhs: Box::new(rhs),
+                        },
+                        _ => unreachable!(),
+                    }
+                })
+            }
             _ => {
                 println!("Unimplement rule '{:?}'", rule);
                 todo!();

@@ -139,6 +139,11 @@ pub enum Node {
         rhs: Box<Node>,
     },
 
+    Subtract {
+        lhs: Box<Node>,
+        rhs: Box<Node>,
+    },
+
     Assign {
         lhs: Box<Node>,
         rhs: Box<Node>,
