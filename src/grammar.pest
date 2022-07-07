@@ -15,7 +15,7 @@ pos_integer = ${ ASCII_DIGIT+ }
 
 statement = { assignment }
 assignment = { indexed_variable ~ "=" ~ expression ~ ";" }
-expression = { parenthetical_expression | indexed_variable | unary_operation | binary_operation }
+expression = { binary_operation | indexed_variable | unary_operation | parenthetical_expression }
 parenthetical_expression = { "(" ~ expression ~ ")" }
 
 unary_operation = { unary_operator ~ expression }
