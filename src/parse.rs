@@ -47,6 +47,17 @@ pub fn parse(toparse: &str) -> Node {
                 },
                 _ => unreachable!(),
             },
+            Rule::binary_operation => {
+                let lhs = Box::new(parse_value(inner_rules.next().unwrap()));
+                let rule = inner_rules.next().unwrap().into_inner().next().unwrap().as_rule();
+                let rhs = Box::new(parse_value(inner_rules.next().unwrap()));
+                match rule {
+                    Rule::addition => Node::Add { lhs: lhs, rhs: rhs },
+                    Rule::subtraction => Node::Subtract { lhs: lhs, rhs: rhs },
+                    _ => unreachable!()
+                }
+            },
+            Rule::binary_operand => parse_value(inner_rules.next().unwrap()),
             Rule::statement => parse_value(inner_rules.next().unwrap()),
             _ => {
                 println!("Unimplement rule '{:?}'", rule);
