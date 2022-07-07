@@ -14,14 +14,13 @@ pos_integer = ${ ASCII_DIGIT+ }
 
 statement = { assignment }
 assignment = { indexed_variable ~ "=" ~ expression ~ ";" }
-variable = { indexed_variable | name }
-expression = { parenthetical_expression | variable | unary_operation | binary_operation }
+expression = { parenthetical_expression | indexed_variable | unary_operation | binary_operation }
 parenthetical_expression = { "(" ~ expression ~ ")" }
 
 unary_operation = { unary_operator ~ expression }
 unary_operator = { "~" }
 
-binary_operand = { parenthetical_expression | variable | unary_operation }
+binary_operand = { parenthetical_expression | indexed_variable | unary_operation }
 binary_operation = { binary_operand ~ binary_operator ~ binary_operand }
 binary_operator = { "-" }
 
