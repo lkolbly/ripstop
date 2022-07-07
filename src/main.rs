@@ -1,10 +1,16 @@
+extern crate pest;
+#[macro_use]
+extern crate pest_derive;
+
 mod ast;
 mod compile;
+mod parse;
 
 use std::collections::HashSet;
 
 use ast::*;
 use compile::*;
+use parse::parse;
 
 fn main() {
     println!("Hello, world!");

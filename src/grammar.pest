@@ -1,0 +1,31 @@
+module_declaration = { SOI ~ "module" ~ name ~ variable_declaration_list ~ "->" ~ variable_declaration_list ~ block ~ EOI }
+
+name = { (ASCII_ALPHA | "_")+ ~ (ASCII_ALPHANUMERIC | "_")* }
+
+variable_declaration_list = { "(" ~ (variable_declaration)* ~ ("," ~ variable_declaration)* ~ ")" }
+variable_declaration = { variable_type ~ name }
+variable_type = { bit_type }
+bit_type = { "bit" }
+
+block = { "{" ~ statement* ~ "}" }
+
+indexed_variable = { name ~ "[" ~ variable_index ~ "]" }
+variable_index = { "t" ~ ("-" ~ pos_integer)? }
+pos_integer = ${ ASCII_DIGIT+ }
+
+statement = { assignment }
+assignment = { indexed_variable ~ "=" ~ expression ~ ";" }
+expression = { parenthetical_expression | indexed_variable | unary_operation | binary_operation }
+parenthetical_expression = { "(" ~ expression ~ ")" }
+
+unary_operation = { unary_operator ~ expression }
+unary_operator = { bitwise_inverse }
+bitwise_inverse = { "~" }
+
+binary_operand = { parenthetical_expression | indexed_variable | unary_operation }
+binary_operation = { binary_operand ~ binary_operator ~ binary_operand }
+binary_operator = { subtraction }
+subtraction = { "-" }
+
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+COMMENT = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" | "//" ~ (!"\n" ~ ANY)* }
