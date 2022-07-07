@@ -150,6 +150,7 @@ fn get_referenced_variables_and_highest_t_offset(input: &Node) -> HashMap<String
             let mut rhs_hm = get_referenced_variables_and_highest_t_offset(&rhs);
             register_references(&mut rhs_hm, &mut variables);
         }
+        _ => todo!()
     }
 
     variables
