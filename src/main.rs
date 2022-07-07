@@ -14,23 +14,11 @@ use parse::parse;
 
 fn main() {
     println!("Hello, world!");
-    let a = Node::ModuleDeclaration {
-        id: "hello".to_string(),
-        in_values: vec![],
-        out_values: vec![(Type::Bit, "led".to_string())],
-        children: vec![Node::Assign {
-            lhs: Box::new(Node::VariableReference {
-                var_id: "led".to_string(),
-                t_offset: 0,
-            }),
-            rhs: Box::new(Node::BitwiseInverse {
-                child: Box::new(Node::VariableReference {
-                    var_id: "led".to_string(),
-                    t_offset: 1,
-                }),
-            }),
-        }],
-    };
+    
+    let a = parse("module hello() -> (bit led) {
+        led[t] = ~led[t-1]; // Perform the bitwise NOT
+    }");
+    println!("{:#?}", a);
 
     //println!("{:?}", verify_node(&a, &HashSet::new()));
     //println!("{}", compile_ast(&a).unwrap());
