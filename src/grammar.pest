@@ -24,7 +24,8 @@ bitwise_inverse = { "~" }
 
 binary_operand = { parenthetical_expression | indexed_variable | unary_operation }
 binary_operation = { binary_operand ~ binary_operator ~ binary_operand }
-binary_operator = { subtraction }
+binary_operator = { addition | subtraction }
+addition = { "+" }
 subtraction = { "-" }
 
 WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
