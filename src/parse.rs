@@ -25,7 +25,6 @@ pub fn parse(toparse: &str) -> Node {
                 out_values: parse_variable_declarations(inner_rules.next().unwrap()),
                 children: parse_block(inner_rules.next().unwrap()),
             },
-            Rule::expression => parse_value(inner_rules.next().unwrap()),
             Rule::assignment => Node::Assign {
                 lhs: Box::new(parse_value(inner_rules.next().unwrap())),
                 rhs: Box::new(parse_value(inner_rules.next().unwrap())),
@@ -57,8 +56,6 @@ pub fn parse(toparse: &str) -> Node {
                     _ => unreachable!()
                 }
             },
-            Rule::binary_operand => parse_value(inner_rules.next().unwrap()),
-            Rule::statement => parse_value(inner_rules.next().unwrap()),
             _ => {
                 println!("Unimplement rule '{:?}'", rule);
                 todo!();

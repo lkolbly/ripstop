@@ -13,16 +13,16 @@ indexed_variable = { name ~ "[" ~ variable_index ~ "]" }
 variable_index = { "t" ~ ("-" ~ pos_integer)? }
 pos_integer = ${ ASCII_DIGIT+ }
 
-statement = { assignment }
+statement = _{ assignment }
 assignment = { indexed_variable ~ "=" ~ expression ~ ";" }
-expression = { binary_operation | indexed_variable | unary_operation | parenthetical_expression }
+expression = _{ binary_operation | indexed_variable | unary_operation | parenthetical_expression }
 parenthetical_expression = { "(" ~ expression ~ ")" }
 
 unary_operation = { unary_operator ~ expression }
 unary_operator = { bitwise_inverse }
 bitwise_inverse = { "~" }
 
-binary_operand = { parenthetical_expression | indexed_variable | unary_operation }
+binary_operand = _{ parenthetical_expression | indexed_variable | unary_operation }
 binary_operation = { binary_operand ~ binary_operator ~ binary_operand }
 binary_operator = { addition | subtraction }
 addition = { "+" }
