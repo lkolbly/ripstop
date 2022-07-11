@@ -5,18 +5,6 @@ use std::{
 
 use crate::ast::{verify_node, Node, Type};
 
-//Takes an input Ripsto&p AST and compiles it to a SystemVerilog string, writable to a .sv file
-pub fn compile_ast(input: &Node) -> Result<String, ()> {
-    //First, verify that the AST is valid
-    /*if let Err(_) = verify_node(input, &HashSet::new()) {
-        return Err(());
-    }*/
-
-    //Then, compile
-    //Ok(compile_ast_unverified(input))
-    Err(())
-}
-
 ///Returns a list of all variables referenced in the input AST and the highest t-value referenced for each variable
 fn get_referenced_variables_and_highest_t_offset(input: &Node) -> HashMap<String, u64> {
     //Takes a found variable reference and registers it appropriately, either adding it to the hashmap, incrementing the hashmap value, or leaving it alone
