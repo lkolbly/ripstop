@@ -106,10 +106,19 @@ pub fn parse(toparse: &str) -> Node {
         }
     }
 
-    fn parse_t_offset(pair: Pair<Rule>) -> u64 {
-        return match pair.into_inner().next() {
-            Some(int_pair) => int_pair.as_str().parse().unwrap(),
-            None => 0,
+    fn parse_t_offset(pair: Pair<Rule>) -> i64 {
+        let mut inner_rules = pair.into_inner();
+        let sign = match inner_rules.next() {
+            Some(sign_pair) => match sign_pair.as_rule() {
+                Rule::addition => -1,
+                Rule::subtraction => 1,
+                _ => unreachable!(),
+            },
+            None => {
+                return 0;
+            }
         };
+        let int: i64 = inner_rules.next().unwrap().as_str().parse().unwrap();
+        return sign * int;
     }
 }
