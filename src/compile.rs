@@ -150,6 +150,9 @@ fn get_referenced_variables_and_highest_t_offset(input: &Node) -> HashMap<String
             let mut rhs_hm = get_referenced_variables_and_highest_t_offset(&rhs);
             register_references(&mut rhs_hm, &mut variables);
         }
+        Node::VariableDeclaration { var_type, var_id } => {
+            register_reference(var_id.clone(), 0, &mut variables);
+        }
         _ => todo!(),
     }
 
@@ -168,6 +171,7 @@ fn compile_expression(input: &Node) -> String {
             compile_expression(lhs),
             compile_expression(rhs)
         ),
+        Node::VariableDeclaration { var_type, var_id } => String::new(),
         _ => panic!("Called compile_expression on non-expression"),
     }
 }
