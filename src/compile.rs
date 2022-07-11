@@ -246,11 +246,14 @@ pub fn compile_module(input: &Node) -> String {
         module_string += "    always @(*) begin\n";
         //User-defined logic compilation (recursive at the moment)
         for c in children {
-            module_string += format!(
-                "        {}\n",
-                compile_expression(c)
-            )
-            .as_str();
+            let compiled = compile_expression(c);
+            if !compiled.is_empty() {
+                module_string += format!(
+                    "        {}\n",
+                    compiled
+                )
+                .as_str();
+            }
         }
         module_string += "    end";
 
