@@ -232,11 +232,7 @@ pub fn compile_module(input: &Node) -> String {
 
             let assign_string = format!("    assign {} = {}_{};", v.0, v.0, 0);
 
-            module_string += format!(
-                "{}\n{}\n\n",
-                declare_string, assign_string
-            )
-            .as_str();
+            module_string += format!("{}\n{}\n\n", declare_string, assign_string).as_str();
         }
 
         // Chaining is finished
@@ -248,11 +244,7 @@ pub fn compile_module(input: &Node) -> String {
         for c in children {
             let compiled = compile_expression(c);
             if !compiled.is_empty() {
-                module_string += format!(
-                    "        {}\n",
-                    compiled
-                )
-                .as_str();
+                module_string += format!("        {}\n", compiled).as_str();
             }
         }
         module_string += "    end";
