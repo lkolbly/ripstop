@@ -125,7 +125,7 @@ pub enum Node {
     //my_var[t + 10] =x> this doesn't work, can't reference a future clock value
     VariableReference {
         var_id: String,
-        t_offset: u64,
+        t_offset: i64,
     },
     //Unary operators only have one child
     //Maybe extract operators into their own enum of sorts (or maybe just unary/binary ops)? Might not be helpful though

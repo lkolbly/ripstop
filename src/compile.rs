@@ -6,9 +6,9 @@ use std::{
 use crate::ast::{verify_node, Node, Type};
 
 ///Returns a list of all variables referenced in the input AST and the highest t-value referenced for each variable
-fn get_referenced_variables_and_highest_t_offset(input: &Node) -> HashMap<String, u64> {
+fn get_referenced_variables_and_highest_t_offset(input: &Node) -> HashMap<String, i64> {
     //Takes a found variable reference and registers it appropriately, either adding it to the hashmap, incrementing the hashmap value, or leaving it alone
-    fn register_reference(var_id: String, t_offset: u64, hm: &mut HashMap<String, u64>) {
+    fn register_reference(var_id: String, t_offset: i64, hm: &mut HashMap<String, i64>) {
         if let Some(current_t) = hm.get_mut(&var_id) {
             *current_t = (*current_t).max(t_offset);
         } else {
@@ -16,12 +16,12 @@ fn get_referenced_variables_and_highest_t_offset(input: &Node) -> HashMap<String
         }
     }
     //Takes a hashmap of found variables and registers each one in the hashmap
-    fn register_references(refs: &mut HashMap<String, u64>, hm: &mut HashMap<String, u64>) {
+    fn register_references(refs: &mut HashMap<String, i64>, hm: &mut HashMap<String, i64>) {
         for r in refs.drain() {
             register_reference(r.0, r.1, hm);
         }
     }
-    let mut variables: HashMap<String, u64> = HashMap::new();
+    let mut variables: HashMap<String, i64> = HashMap::new();
 
     //For each of these branches, register any variable references and search children recursively
     match input {
@@ -96,7 +96,7 @@ pub fn compile_module(input: &Node) -> String {
     {
         //Stores pairs of (variable ID, highest used t-offset)
         //This is needed to create the registers
-        let variables: HashMap<String, u64> = get_referenced_variables_and_highest_t_offset(input);
+        let variables: HashMap<String, i64> = get_referenced_variables_and_highest_t_offset(input);
 
         //rst and clk are always included as inputs
         let mut module_string = format!("module {id}(\n    input clk\n    input rst");
