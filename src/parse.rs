@@ -72,6 +72,10 @@ pub fn parse(toparse: &str) -> Node {
                     }
                 })
             }
+            Rule::variable_declaration => Node::VariableDeclaration {
+                var_type: parse_type(inner_rules.next().unwrap()),
+                var_id: inner_rules.next().unwrap().as_str().to_string(),
+            },
             _ => {
                 println!("Unimplement rule '{:?}'", rule);
                 todo!();

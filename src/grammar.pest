@@ -13,7 +13,8 @@ indexed_variable = { name ~ "[" ~ variable_index ~ "]" }
 variable_index = { "t" ~ ("-" ~ pos_integer)? }
 pos_integer = ${ ASCII_DIGIT+ }
 
-statement = _{ assignment }
+statement = _{ assignment | declaration_statement }
+declaration_statement = _{ variable_declaration ~ ";" }
 assignment = { indexed_variable ~ "=" ~ expression ~ ";" }
 expression = _{ binary_operation | indexed_variable | unary_operation | parenthetical_expression }
 parenthetical_expression = { "(" ~ expression ~ ")" }

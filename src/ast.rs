@@ -148,7 +148,12 @@ pub enum Node {
         lhs: Box<Node>,
         rhs: Box<Node>,
     },
-    //TODO: Constants, VariableDeclaration, [Some way of handling scope], etc.
+
+    VariableDeclaration {
+        var_type: Type,
+        var_id: String,
+    },
+    //TODO: Constants, [Some way of handling scope], etc.
 }
 
 //This ripstop code:
