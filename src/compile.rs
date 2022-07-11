@@ -239,14 +239,16 @@ pub fn compile_module(input: &Node) -> String {
         chain_string += "    end\n\n";
         module_string += chain_string.as_str();
 
+        module_string += "    always @(*) begin\n";
         //User-defined logic compilation (recursive at the moment)
         for c in children {
             module_string += format!(
-                "    always @(*) begin\n        {}\n    end",
+                "        {}\n",
                 compile_expression(c)
             )
             .as_str();
         }
+        module_string += "    end";
 
         //Thirdly, close the declaration with "endmodule"
         module_string += "\nendmodule";
