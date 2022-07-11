@@ -98,7 +98,7 @@ pub fn compile_ast(input: &Node) -> Result<String, ()> {
 }*/
 ///Returns a list of all variables referenced in the input AST and the highest t-value referenced for each variable
 fn get_referenced_variables_and_highest_t_offset(input: &Node) -> HashMap<String, u64> {
-    //Takes a found variable reference and registers it appropriately, either adding it to the hashmap, incrimenting the hashmap value, or leaving it alone
+    //Takes a found variable reference and registers it appropriately, either adding it to the hashmap, incrementing the hashmap value, or leaving it alone
     fn register_reference(var_id: String, t_offset: u64, hm: &mut HashMap<String, u64>) {
         if let Some(current_t) = hm.get_mut(&var_id) {
             *current_t = (*current_t).max(t_offset);
