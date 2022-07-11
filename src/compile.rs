@@ -201,7 +201,11 @@ pub fn compile_module(input: &Node) -> String {
         }
 
         //Close the module head and write everything else. Then, close the module with "endmodule"
-        module_string += "\n);";
+        module_string += "\n);\n";
+
+        // Chaining block for all variables
+        let mut chain_string = String::new();
+        chain_string += "    always @(posedge clk) begin\n";
 
         //Register chain creation for each variable
         for v in &variables {
@@ -216,24 +220,24 @@ pub fn compile_module(input: &Node) -> String {
             declare_string += format!("{}_{};", v.0, v.1).as_str();
 
             //Second, set up register chaining
-
-            let mut chain_string = String::new();
             for i in (0..*v.1).rev() {
                 let lhs = format!("{}_{}", v.0, i + 1);
                 let rhs = format!("{}_{}", v.0, i);
-                chain_string +=
-                    format!("    always @(posedge clk) begin\n        {lhs} <= {rhs};\n    end\n")
-                        .as_str();
+                chain_string += format!("        {lhs} <= {rhs};\n").as_str();
             }
 
             let assign_string = format!("    assign {} = {}_{};", v.0, v.0, 0);
 
             module_string += format!(
-                "\n{}\n\n{}\n\n{}",
-                declare_string, assign_string, chain_string
+                "{}\n{}\n\n",
+                declare_string, assign_string
             )
             .as_str();
         }
+
+        // Chaining is finished
+        chain_string += "    end\n\n";
+        module_string += chain_string.as_str();
 
         //User-defined logic compilation (recursive at the moment)
         for c in children {
