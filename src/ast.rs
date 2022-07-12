@@ -1,4 +1,8 @@
-use std::collections::HashSet;
+use std::{
+    cell::{RefCell, RefMut},
+    rc::Rc,
+    collections::HashSet
+};
 
 #[derive(Debug, Clone)]
 pub enum Type {
@@ -7,6 +11,79 @@ pub enum Type {
 
 //TODO: Better error system (currently panics, only slightly better than crashing)
 //Perhaps create a verification error enum and return a Vec<VerificationError>
+
+///Verify an AST and normalize variable offsets to be all positive (i.e. a[t+1] -> a[t] while b[t-1] -> b[t-2] because positive offset is backwards in time)
+pub fn verify_ast(node: &mut Node) -> Result<(), String> {
+    fn var_defined(vars: &mut Vec<(Type, String)>, id: &String) -> bool {
+        vars.iter().any(|v| &v.1 == id)
+    }
+
+    fn recurse(n: &mut Node, vars: &mut Vec<(Type, String)>, low_index: &mut i64, var_references: &mut Vec<Rc<RefCell<Node>>>) -> Result<(), String> {
+        return match n {
+            Node::Add { lhs, rhs } | Node::Subtract { lhs, rhs } | Node::Assign { lhs, rhs } => {
+                match recurse(lhs, vars, low_index, var_references) {
+                    Ok(e) => recurse(rhs, vars, low_index, var_references),
+                    Err(e) => Err(e)
+                }
+            },
+            Node::BitwiseInverse { child } => recurse(child, vars, low_index, var_references),
+            Node::ModuleDeclaration { id, in_values, out_values, children } => unreachable!(),
+            Node::VariableDeclaration { var_type, var_id } => {
+                if var_defined(vars, var_id) {
+                    return Err(format!("Variable {var_id} is already defined."));
+                } else {
+                    vars.push((var_type.clone(), var_id.to_string()));
+                }
+                Ok(())
+            },
+            Node::VariableReference { var_id, t_offset } => {
+                if !var_defined(vars, var_id) {
+                    return Err(format!("Variable {var_id} has not been defined."));
+                }
+                if t_offset < low_index {
+                    low_index.clone_from(t_offset);
+                }
+                var_references.push(Rc::new(RefCell::new(n)));
+                Ok(())
+            }
+        };
+    }
+
+    return match node {
+        Node::ModuleDeclaration {
+            id,
+            in_values,
+            out_values,
+            children,
+        } => {
+            let mut variables: Vec<(Type, String)> = in_values.clone();
+            variables.append(&mut out_values.clone());
+
+            let mut variable_references: Vec<Rc<RefCell<Node>>> = Vec::new();
+            
+            let mut lowest_index = i64::MAX;
+
+            // Get all variables, find lowest variable offset, and collect variable reference nodes for normalization
+            for c in children {
+                recurse(c, &mut variables, &mut lowest_index, &mut variable_references);
+            }
+
+            // Normalize variable references
+            for rc in variable_references {
+                let mut var_ref = *rc.borrow_mut();
+                match var_ref {
+                    Node::VariableReference { var_id, t_offset } => {
+                        t_offset -= lowest_index;
+                    },
+                    _ => {}
+                }
+            }
+
+            Ok(())
+        },
+        _ => Err("Can only verify a ModuleDeclaration node.".to_string()),
+    };
+}
 
 ///Kind of broken because of variable scope
 pub fn verify_node(node: &Node, parent_declared_vars: &HashSet<String>) -> Result<(), ()> {
