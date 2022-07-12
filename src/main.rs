@@ -13,20 +13,20 @@ use compile::*;
 use parse::parse;
 
 fn main() {
-    println!("Hello, world!");
-
-    let a = parse(
+    let mut a = parse(
         "module hello() -> (bit led) {
-        led[t] = ~led[t-1]; // Perform the bitwise NOT
+        led[t+1] = ~led[t-2]; // Perform the bitwise NOT
     }",
     );
-    println!("{:#?}", a);
+    println!("{:#?}\n", a);
 
-    //println!("{:?}", verify_node(&a, &HashSet::new()));
-    //println!("{}", compile_ast(&a).unwrap());
-    println!("{}", compile_module(&a));
+    println!("Pre-verify:\n\n{}\n\n", compile_module(&a));
 
-    let b = parse(
+    verify_ast(&mut a).unwrap();
+
+    println!("Post-verify:\n\n{}\n\n", compile_module(&a));
+
+    /*let b = parse(
         "module add(bit b, bit c) -> (bit a) {
         a[t] = a[t-1] + b[t] + c[t-1];
     }",
@@ -34,5 +34,5 @@ fn main() {
     println!("{:#?}", b);
 
     println!("{:#?}", b);
-    println!("{}", compile_module(&b));
+    println!("{}", compile_module(&b));*/
 }

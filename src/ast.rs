@@ -1,7 +1,7 @@
 use std::{
     cell::{RefCell, RefMut},
+    collections::{HashMap, HashSet},
     rc::Rc,
-    collections::HashSet
 };
 
 #[derive(Debug, Clone)]
@@ -9,25 +9,183 @@ pub enum Type {
     Bit,
 }
 
+//Some notes about this recurse_ast method:
+//1- This is not in its final form
+//2- This will not normally be optimally performant
+//3- The current parameters are clunky, and will be changed if a better way to do this appears (as it stands I don't understand Fn vs. FnMut enough to decide what's best)
+
+///Recursively applies function 'f' to each Node in the AST.
+/// 'f' takes a mutable reference to a node and a mutable reference of some value of type T. 'f' is called on each Node and then its children
+fn recurse_ast<T, F>(node: &mut Node, f: &mut F, t: &mut T)
+where
+    F: FnMut(&mut Node, &mut T) + Clone,
+{
+    (f)(node, t);
+
+    match node {
+        Node::ModuleDeclaration { children, .. } => {
+            for c in children {
+                recurse_ast(c, f, t);
+            }
+        }
+        Node::BitwiseInverse { child } => recurse_ast(child, f, t),
+        Node::Add { lhs, rhs } | Node::Subtract { lhs, rhs } | Node::Assign { lhs, rhs } => {
+            recurse_ast(lhs, f, t);
+            recurse_ast(rhs, f, t);
+        }
+        //Anthing without children doesn't need to be matched against
+        _ => (),
+    }
+}
+
+//Examples of future VerificationError variants: TypeMismatch, InvalidModuleReference
+///Describes an error encountered during verification
+#[derive(Debug, Clone)]
+pub enum VerificationError {
+    VariableNotDeclared { var_id: String },
+    VariableAlreadyDeclared { var_id: String }, //This error is specific to code without scope, which is the current system
+}
+
 //TODO: Better error system (currently panics, only slightly better than crashing)
 //Perhaps create a verification error enum and return a Vec<VerificationError>
 
+//Note: this is not optimized for performance
+pub fn verify_ast(node: &mut Node) -> Result<(), Vec<VerificationError>> {
+    //IMPORTANT: The default t-offset of any unused variable is 0 for now (should change later)
+    //This means that a[t-10] = b[t-10] + c[t-9] won't become a[t-1] = b[t-1] + c[t]
+
+    //A HashMap storing pairs of the variable's name and its type and lowest t-offset (var[t - n] is pos offset, var[t + n] is neg offset)
+    let mut vars: HashMap<String, (Type, i64)> = HashMap::new();
+    let mut errs: Vec<VerificationError> = Vec::new();
+
+    ///Takes a node and updates (only using the one node, not recursive) the vars hashmap to see if it has up-to-date t-offset and variable reference values.
+    /// Returns any errors found when verifying this node
+    fn update_vars(node: &Node, vars: &mut HashMap<String, (Type, i64)>) -> Vec<VerificationError> {
+        match node {
+            Node::ModuleDeclaration {
+                id,
+                in_values,
+                out_values,
+                children,
+            } => {
+                let mut all_values = in_values.clone();
+                all_values.append(&mut out_values.clone());
+
+                for v in all_values {
+                    vars.insert(v.1, (v.0, 0));
+                }
+
+                Vec::new()
+            }
+            Node::VariableReference { var_id, t_offset } => {
+                if let Some(v) = vars.get_mut(var_id) {
+                    //A higher
+                    if *t_offset < v.1 {
+                        v.1 = *t_offset;
+                    }
+                    Vec::new()
+                } else {
+                    vec![VerificationError::VariableNotDeclared {
+                        var_id: var_id.clone(),
+                    }]
+                }
+            }
+            Node::VariableDeclaration { var_type, var_id } => {
+                if let None = vars.insert(var_id.clone(), (var_type.clone(), 0)) {
+                    Vec::new()
+                } else {
+                    vec![VerificationError::VariableAlreadyDeclared {
+                        var_id: var_id.clone(),
+                    }]
+                }
+            }
+
+            _ => Vec::new(),
+        }
+    }
+
+    //Use update_vars to call recurse_ast() and get the updated set of variable references w/ highest t-offset
+    {
+        //A method which uses update_vars in a way which recurse_ast can be used
+        fn update_vars_as_recurse_ast_closure(
+            node: &mut Node,
+            vals: &mut (
+                &mut HashMap<String, (Type, i64)>,
+                &mut Vec<VerificationError>,
+            ),
+        ) {
+            let mut errs = update_vars(node, vals.0);
+            vals.1.append(&mut errs);
+        }
+        recurse_ast(
+            node,
+            &mut update_vars_as_recurse_ast_closure,
+            &mut (&mut vars, &mut errs),
+        );
+    }
+
+    //Update the t-offset of each variable reference using 'vars'
+
+    ///Takes a Node and update its t-offset based on 'vars'. Only affects VariableReference variants and doesn't return any errors
+    fn update_node(node: &mut Node, vars: &HashMap<String, (Type, i64)>) {
+        match node {
+            Node::VariableReference { var_id, t_offset } => {
+                *t_offset -= vars
+                    .get(var_id)
+                    .expect(&format!(
+                        "Couldn't find variable '{}' in update_node()",
+                        var_id
+                    ))
+                    .1
+            }
+            _ => (),
+        }
+    }
+
+    //println!("Final vars:\n{:#?}", vars);
+
+    //Apply update_node to the entire tree
+    recurse_ast(
+        node,
+        &mut |node: &mut Node, vars: &mut HashMap<String, (Type, i64)>| update_node(node, vars),
+        &mut vars,
+    );
+
+    //At the end, return Ok(()) only if there were no errors
+    //Otherwise, return all the errors
+    if errs.is_empty() {
+        Ok(())
+    } else {
+        Err(errs)
+    }
+}
+
 ///Verify an AST and normalize variable offsets to be all positive (i.e. a[t+1] -> a[t] while b[t-1] -> b[t-2] because positive offset is backwards in time)
-pub fn verify_ast(node: &mut Node) -> Result<(), String> {
+/*pub fn verify_ast(node: &mut Node) -> Result<(), String> {
     fn var_defined(vars: &mut Vec<(Type, String)>, id: &String) -> bool {
         vars.iter().any(|v| &v.1 == id)
     }
 
-    fn recurse(n: &mut Node, vars: &mut Vec<(Type, String)>, low_index: &mut i64, var_references: &mut Vec<Rc<RefCell<Node>>>) -> Result<(), String> {
+    fn recurse(
+        n: &mut Node,
+        vars: &mut Vec<(Type, String)>,
+        low_index: &mut i64,
+        var_references: &mut Vec<Rc<RefCell<Node>>>,
+    ) -> Result<(), String> {
         return match n {
             Node::Add { lhs, rhs } | Node::Subtract { lhs, rhs } | Node::Assign { lhs, rhs } => {
                 match recurse(lhs, vars, low_index, var_references) {
                     Ok(e) => recurse(rhs, vars, low_index, var_references),
-                    Err(e) => Err(e)
+                    Err(e) => Err(e),
                 }
-            },
+            }
             Node::BitwiseInverse { child } => recurse(child, vars, low_index, var_references),
-            Node::ModuleDeclaration { id, in_values, out_values, children } => unreachable!(),
+            Node::ModuleDeclaration {
+                id,
+                in_values,
+                out_values,
+                children,
+            } => unreachable!(),
             Node::VariableDeclaration { var_type, var_id } => {
                 if var_defined(vars, var_id) {
                     return Err(format!("Variable {var_id} is already defined."));
@@ -35,7 +193,7 @@ pub fn verify_ast(node: &mut Node) -> Result<(), String> {
                     vars.push((var_type.clone(), var_id.to_string()));
                 }
                 Ok(())
-            },
+            }
             Node::VariableReference { var_id, t_offset } => {
                 if !var_defined(vars, var_id) {
                     return Err(format!("Variable {var_id} has not been defined."));
@@ -43,7 +201,7 @@ pub fn verify_ast(node: &mut Node) -> Result<(), String> {
                 if t_offset < low_index {
                     low_index.clone_from(t_offset);
                 }
-                var_references.push(Rc::new(RefCell::new(n)));
+                var_references.push(Rc::new(RefCell::new(*n)));
                 Ok(())
             }
         };
@@ -60,12 +218,17 @@ pub fn verify_ast(node: &mut Node) -> Result<(), String> {
             variables.append(&mut out_values.clone());
 
             let mut variable_references: Vec<Rc<RefCell<Node>>> = Vec::new();
-            
+
             let mut lowest_index = i64::MAX;
 
             // Get all variables, find lowest variable offset, and collect variable reference nodes for normalization
             for c in children {
-                recurse(c, &mut variables, &mut lowest_index, &mut variable_references);
+                recurse(
+                    c,
+                    &mut variables,
+                    &mut lowest_index,
+                    &mut variable_references,
+                );
             }
 
             // Normalize variable references
@@ -74,16 +237,16 @@ pub fn verify_ast(node: &mut Node) -> Result<(), String> {
                 match var_ref {
                     Node::VariableReference { var_id, t_offset } => {
                         t_offset -= lowest_index;
-                    },
+                    }
                     _ => {}
                 }
             }
 
             Ok(())
-        },
+        }
         _ => Err("Can only verify a ModuleDeclaration node.".to_string()),
     };
-}
+}*/
 
 ///Kind of broken because of variable scope
 pub fn verify_node(node: &Node, parent_declared_vars: &HashSet<String>) -> Result<(), ()> {
