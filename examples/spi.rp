@@ -1,0 +1,71 @@
+module spi_master(bits<32> new_data, bits<5> new_datasize, bits<2> new_chip_select, bits<16> new_half_clock, bit go, bit miso)
+    -> (bit ready, bit mosi, bit sclk, bits<4> cs, bits<32> data_out, bits<5> data_out_size, bit data_out_valid)
+{
+    bits<5> state;
+    state[0] = 0;
+
+    // data stores the next bit to write as the low bit, the next bit to read goes into the high bit
+    bits<32> data;
+    bits<5> bits_to_send; // The number of bits left to send
+    bits<5> data_size;
+    bits<16> half_clock;
+    bits<16> wait;
+
+    if state[t-1] == 0 {
+        // Idle state
+        if go[t] {
+            ready[t] = 0;
+            mosi[t] = new_data[t][0];
+            data[t] = 0'b1 ++ new_data[t][31:1];
+            bits_to_send[t] = new_datasize[t];
+            data_size[t] = new_datasize[t];
+            half_clock[t] = new_half_clock[t];
+            if new_chip_select[t] == 0 {
+                cs[t] = 1;
+            } else if new_chip_select[t] == 1 {
+                cs[t] = 2;
+            } else if new_chip_select[t] == 2 {
+                cs[t] = 4;
+            } else if new_chip_select[t] == 3 {
+                cs[t] = 8;
+            }
+            state[t] = 1; // Into low-clock state...
+            wait[t] = new_half_clock[t];
+        } else {
+            ready[t] = 1;
+            sclk[t] = 1;
+            data_out_valid[t] = 0;
+            cs[t] = 0;
+        }
+    } else if state[t-1] == 1 {
+        // Waiting for the half clock to end...
+        if wait[t-1] == 0 {
+            // Done waiting! Do the next action
+            if bits_to_send[t-1] == 0 {
+                // No more bits to send. Return to idle.
+                state[t] = 0;
+                data_out[t] = data[t-1];
+                data_out_size[t] = data_size[t-1];
+                data_out_valid[t] = 1;
+            } else {
+                // Clock high
+                sclk[t] = 0;
+                state[t] = 2; // High clock state
+                wait[t] = half_clock[t-1];
+            }
+        } else {
+            wait[t] = wait[t-1] - 1;
+        }
+    } else if state[t-1] == 2 {
+        if wait[t-1] == 0 {
+            // Change over the data
+            mosi[t] = data[t-1][0];
+            data[t] = miso[t-1] ++ data[t-1][31:1];
+            sclk[t] = 1;
+            state[t] = 1;
+            wait[t] = half_clock[t-1];
+        } else {
+            wait[t] = wait[t-1] - 1;
+        }
+    }
+}

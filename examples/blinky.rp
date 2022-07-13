@@ -1,0 +1,43 @@
+module blink() -> (bit led) {
+    led[t] = ~led[t-1];
+}
+
+module blink_resettable() -> (bit led) {
+    led[0] = 0;
+    led[t] = ~led[t-1];
+}
+
+module blink_configurable(bits<16> period) -> (bit led) {
+    bits<16> counter;
+    if counter[t-1] == period[t-1] {
+        counter[t] = 0;
+        led[t] = led[t-1];
+    } else {
+        counter[t] = counter[t-1] + 1;
+    }
+}
+
+module blink_set_and_forget(bits<16> new_period, bit set) -> (bit led) {
+    bits<16> period;
+    period[0] = 1;
+    if set[t-1] {
+        period[t] = new_period[t-1];
+        counter[t] = 0;
+    } else if counter[t-1] == period[t-1] {
+        counter[t] = 0;
+        led[t] = led[t-1];
+    } else {
+        counter[t] = counter[t-1] + 1;
+    }
+}
+
+module blink_fixed<uint period>() -> (bit led) {
+    bits<clog2(period)> counter;
+    counter[0] = period;
+    if counter[t-1] == 0 {
+        counter[t] = period;
+        led[t] = ~led[t-1];
+    } else {
+        counter[t] = counter[t-1] - 1;
+    }
+}
