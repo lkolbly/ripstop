@@ -1,11 +1,11 @@
-pub enum Node {
+pub enum VNode {
     ///Copypasta'd from ast::Node
     ModuleDeclaration {
         id: String,
         in_values: Vec<String>,
         out_values: Vec<String>,
 
-        children: Vec<Node>,
+        children: Vec<VNode>,
     },
 
     RegisterDeclare {
@@ -17,41 +17,41 @@ pub enum Node {
 
     ///Feel free to rename. This represents 'assign var_a = var_b'
     AssignKeyword {
-        lhs: Box<Node>,
-        rhs: Box<Node>,
+        lhs: Box<VNode>,
+        rhs: Box<VNode>,
     },
     ///'lhs <= rhs'
     ClockAssign {
-        lhs: Box<Node>,
-        rhs: Box<Node>,
+        lhs: Box<VNode>,
+        rhs: Box<VNode>,
     },
     ///Represents a statement of the form: 'always @(...) begin ... end'
     AlwaysBegin {
-        children: Vec<Node>,
+        children: Vec<VNode>,
     },
 
     //Unary ops have one child
     ///Copied from ast::Node
     BitwiseInverse {
-        child: Box<Node>,
+        child: Box<VNode>,
     },
 
     //Binary operators have two children
     ///Copied from ast::Node
     Add {
-        lhs: Box<Node>,
-        rhs: Box<Node>,
+        lhs: Box<VNode>,
+        rhs: Box<VNode>,
     },
 
     ///Copied from ast::Node
     Subtract {
-        lhs: Box<Node>,
-        rhs: Box<Node>,
+        lhs: Box<VNode>,
+        rhs: Box<VNode>,
     },
 
     ///Copied from ast::Node
     Assign {
-        lhs: Box<Node>,
-        rhs: Box<Node>,
+        lhs: Box<VNode>,
+        rhs: Box<VNode>,
     },
 }
