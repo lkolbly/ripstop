@@ -1,8 +1,3 @@
-//Seperate Type for Verilog in case Ripstop gets more complicated types
-pub enum Type {
-    Bit,
-}
-
 pub enum Node {
     ///Copypasta'd from ast::Node
     ModuleDeclaration {
@@ -59,4 +54,16 @@ pub enum Node {
         lhs: Box<Node>,
         rhs: Box<Node>,
     },
+}
+
+
+
+impl std::fmt::Display for Node {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut s = String::new();
+
+        for 
+
+        write!(f,)
+    }
 }
