@@ -3,7 +3,7 @@ use std::{
     hash::Hash,
 };
 
-use crate::ast::{verify_node, Node, Type};
+use crate::ast::{Node, Type};
 
 ///Returns a list of all variables referenced in the input AST and the highest t-value referenced for each variable
 fn get_referenced_variables_and_highest_t_offset(input: &Node) -> HashMap<String, i64> {
