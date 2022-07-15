@@ -1,8 +1,3 @@
-//Seperate Type for Verilog in case Ripstop gets more complicated types
-pub enum Type {
-    Bit,
-}
-
 pub enum Node {
     ///Copypasta'd from ast::Node
     ModuleDeclaration {
