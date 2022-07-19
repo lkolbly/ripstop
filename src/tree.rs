@@ -52,26 +52,46 @@ impl<T> Tree<T> {
     }
 
     pub fn append_to(&mut self, nodeid: &NodeId, toappendid: &NodeId) -> Result<(), TreeError> {
-        let mut node = self.get_node_mut(nodeid)?;
+        {
+            let mut node = self.get_node_mut(nodeid)?;
+            if let None = node.children {
+                node.children = Some(Vec::new());
+            }
+        }
+
+        let sibling_id = {
+            let mut node = self.get_node_mut(nodeid)?;
+
+            let mut children = node.children.as_mut().expect("Should never fail.");
+            if children.len() > 0 {
+                children.push(toappendid.clone());
+
+                let sibling_id = children
+                    .get(children.len() - 1)
+                    .expect("Should never fail.")
+                    .clone();
+
+                Some(sibling_id)
+            } else {
+                children.push(toappendid.clone());
+                None
+            }
+        };
+
+        if let Some(sib_id) = sibling_id {
+            let mut sibling = self.get_node_mut(&sib_id)?;
+            sibling.next_sibling = Some(toappendid.clone());
+        }
+
         let mut toappend = self.get_node_mut(toappendid)?;
-
-        if let None = node.children {
-            node.children = Some(Vec::new());
-        }
-
-        let mut children = node.children.as_mut().expect("Should never fail.");
-        if children.len() > 0 {
-            let sibling_id = children
-                .get(children.len() - 1)
-                .expect("Should never fail.");
-            let mut sibling = self.get_node_mut(sibling_id)?;
-
-            toappend.previous_sibling = Some(sibling_id.clone());
-            sibling.next_sibling = Some(toappend.id);
-        }
-        children.push(toappend.id);
-
-        toappend.parent = Some(node.id);
+        toappend.previous_sibling = {
+            if let Some(sib_id) = sibling_id {
+                Some(sib_id.clone())
+            } else {
+                None
+            }
+        };
+        toappend.parent = Some(nodeid.clone());
 
         Ok(())
     }
@@ -93,8 +113,8 @@ pub struct Node<T> {
 }
 
 impl<T> Node<T> {
-    pub fn append(&mut self, toappend: &NodeId, tree: &mut Tree<T>) {
-        tree.append_to(&self.id, toappend);
+    pub fn append(&mut self, toappend: &NodeId, tree: &mut Tree<T>) -> Result<(), TreeError> {
+        tree.append_to(&self.id, toappend)
     }
 }
 
