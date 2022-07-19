@@ -97,9 +97,49 @@ impl<T> Tree<T> {
     }
 }
 
-impl<T> fmt::Display for Tree<T> {
+impl<T: std::fmt::Debug> fmt::Display for Tree<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "hello")
+        let root = self.nodes.get(0);
+        if let Some(root_node) = root {
+            let mut cur_node = root_node;
+            let mut indent_level = 0;
+            while {
+                f.write_fmt(format_args!(
+                    "{}{:?} \n",
+                    "  ".repeat(indent_level),
+                    cur_node.data
+                ))?;
+                let mut found_next = false;
+                if let Some(children) = &cur_node.children {
+                    let child = children.get(0);
+                    if let Some(child_id) = child {
+                        cur_node = self.get_node(child_id).unwrap();
+                        indent_level += 1;
+                        found_next = true;
+                    }
+                }
+                if !found_next {
+                    if let Some(sib_id) = cur_node.next_sibling {
+                        cur_node = self.get_node(&sib_id).unwrap();
+                        found_next = true;
+                    }
+                }
+                if !found_next {
+                    if let Some(parent_id) = cur_node.parent {
+                        let parent = self.get_node(&parent_id).unwrap();
+                        if let Some(uncle_id) = parent.next_sibling {
+                            cur_node = self.get_node(&uncle_id).unwrap();
+                            found_next = true;
+                            indent_level -= 1;
+                        }
+                    }
+                }
+                found_next
+            } {}
+            write!(f, "")
+        } else {
+            write!(f, "Empty Tree")
+        }
     }
 }
 
