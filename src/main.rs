@@ -5,6 +5,7 @@ extern crate pest_derive;
 mod ast;
 mod compile;
 mod parse;
+mod tree;
 mod verilog_ast;
 
 use std::collections::HashSet;
