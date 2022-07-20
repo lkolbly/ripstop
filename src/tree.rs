@@ -1,4 +1,7 @@
-use std::fmt;
+use std::{
+    fmt,
+    ops::{Index, IndexMut},
+};
 
 #[derive(Debug, Clone)]
 pub enum TreeError {
@@ -60,9 +63,9 @@ impl<T> Tree<T> {
         }
 
         let sibling_id = {
-            let mut node = self.get_node_mut(nodeid)?;
+            let node = self.get_node_mut(nodeid)?;
 
-            let mut children = node.children.as_mut().expect("Should never fail.");
+            let children = node.children.as_mut().expect("Should never fail.");
             if children.len() > 0 {
                 let sibling_id = children
                     .get(children.len() - 1)
@@ -163,4 +166,24 @@ impl<T> Node<T> {
 pub struct NodeId {
     //using usize guarantees vector of nodes is not too large
     index: usize,
+}
+
+impl From<usize> for NodeId {
+    fn from(n: usize) -> Self {
+        NodeId { index: n }
+    }
+}
+
+impl<T> Index<NodeId> for Vec<Node<T>> {
+    type Output = Node<T>;
+
+    fn index(&self, index: NodeId) -> &Self::Output {
+        &self[index.index]
+    }
+}
+
+impl<T> IndexMut<NodeId> for Vec<Node<T>> {
+    fn index_mut(&mut self, index: NodeId) -> &mut Self::Output {
+        &mut self[index.index]
+    }
 }
