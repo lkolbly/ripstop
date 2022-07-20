@@ -143,6 +143,7 @@ impl<T: std::fmt::Debug> fmt::Display for Tree<T> {
     }
 }
 
+#[derive(Debug)]
 pub struct Node<T> {
     pub id: NodeId,
     pub parent: Option<NodeId>,
