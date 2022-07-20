@@ -64,12 +64,12 @@ impl<T> Tree<T> {
 
             let mut children = node.children.as_mut().expect("Should never fail.");
             if children.len() > 0 {
-                children.push(toappendid.clone());
-
                 let sibling_id = children
                     .get(children.len() - 1)
                     .expect("Should never fail.")
                     .clone();
+
+                children.push(toappendid.clone());
 
                 Some(sibling_id)
             } else {
