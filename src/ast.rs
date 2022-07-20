@@ -128,17 +128,11 @@ pub fn verify_ast(node: &mut Node) -> Result<(), Vec<VerificationError>> {
 
     ///Takes a Node and update its t-offset based on 'vars'. Only affects VariableReference variants and doesn't return any errors
     fn update_node(node: &mut Node, vars: &HashMap<String, (Type, i64)>) {
-        match node {
-            Node::VariableReference { var_id, t_offset } => {
-                *t_offset -= vars
-                    .get(var_id)
-                    .expect(&format!(
-                        "Couldn't find variable '{}' in update_node()",
-                        var_id
-                    ))
-                    .1
-            }
-            _ => (),
+        if let Node::VariableReference { var_id, t_offset } = node {
+            *t_offset -= vars
+                .get(var_id)
+                .unwrap_or_else(|| panic!("Couldn't find variable '{}' in update_node()", var_id))
+                .1
         }
     }
 
