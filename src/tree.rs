@@ -1,5 +1,5 @@
 pub struct Tree<T> {
-    nodes: Vec<Node<T>>
+    nodes: Vec<Node<T>>,
 }
 
 pub struct Node<T> {
@@ -8,10 +8,10 @@ pub struct Node<T> {
     previous_sibling: Option<NodeId>,
     next_sibling: Option<NodeId>,
     children: Option<Vec<NodeId>>,
-    data: T
+    data: T,
 }
 
 pub struct NodeId {
     //using usize guarantees vector of nodes is not too large
-    index: usize
+    index: usize,
 }
