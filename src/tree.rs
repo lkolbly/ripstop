@@ -12,6 +12,12 @@ pub struct Tree<T> {
     nodes: Vec<Node<T>>,
 }
 
+impl<T> Default for Tree<T> {
+    fn default() -> Self {
+        Tree::new()
+    }
+}
+
 impl<T> Tree<T> {
     pub fn new() -> Tree<T> {
         Tree { nodes: Vec::new() }
@@ -19,23 +25,19 @@ impl<T> Tree<T> {
 
     pub fn get_node(&self, id: &NodeId) -> Result<&Node<T>, TreeError> {
         let ret = self.nodes.get(id.index);
-        if let None = ret {
-            Err(TreeError::NodeNotFound {
-                node_id: id.clone(),
-            })
+        if let Some(node) = ret {
+            Ok(node)
         } else {
-            Ok(ret.expect("Found to be not none."))
+            Err(TreeError::NodeNotFound { node_id: *id })
         }
     }
 
     pub fn get_node_mut(&mut self, id: &NodeId) -> Result<&mut Node<T>, TreeError> {
         let ret = self.nodes.get_mut(id.index);
-        if let None = ret {
-            Err(TreeError::NodeNotFound {
-                node_id: id.clone(),
-            })
+        if let Some(node) = ret {
+            Ok(node)
         } else {
-            Ok(ret.expect("Found to be not none."))
+            Err(TreeError::NodeNotFound { node_id: *id })
         }
     }
 
@@ -57,7 +59,7 @@ impl<T> Tree<T> {
     pub fn append_to(&mut self, nodeid: &NodeId, toappendid: &NodeId) -> Result<(), TreeError> {
         {
             let mut node = self.get_node_mut(nodeid)?;
-            if let None = node.children {
+            if node.children.is_none() {
                 node.children = Some(Vec::new());
             }
         }
@@ -66,35 +68,28 @@ impl<T> Tree<T> {
             let node = self.get_node_mut(nodeid)?;
 
             let children = node.children.as_mut().expect("Should never fail.");
-            if children.len() > 0 {
-                let sibling_id = children
+            if !children.is_empty() {
+                let sibling_id = *children
                     .get(children.len() - 1)
-                    .expect("Should never fail.")
-                    .clone();
+                    .expect("Should never fail.");
 
-                children.push(toappendid.clone());
+                children.push(*toappendid);
 
                 Some(sibling_id)
             } else {
-                children.push(toappendid.clone());
+                children.push(*toappendid);
                 None
             }
         };
 
         if let Some(sib_id) = sibling_id {
             let mut sibling = self.get_node_mut(&sib_id)?;
-            sibling.next_sibling = Some(toappendid.clone());
+            sibling.next_sibling = Some(*toappendid);
         }
 
         let mut toappend = self.get_node_mut(toappendid)?;
-        toappend.previous_sibling = {
-            if let Some(sib_id) = sibling_id {
-                Some(sib_id.clone())
-            } else {
-                None
-            }
-        };
-        toappend.parent = Some(nodeid.clone());
+        toappend.previous_sibling = sibling_id;
+        toappend.parent = Some(*nodeid);
 
         Ok(())
     }
