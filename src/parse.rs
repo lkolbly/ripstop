@@ -1,5 +1,7 @@
-use crate::ast::Node;
+use crate::ast::ASTNode;
 use crate::ast::Type;
+use crate::tree::NodeId;
+use crate::tree::Tree;
 
 use lazy_static::lazy_static;
 
@@ -19,72 +21,68 @@ lazy_static! {
     ]);
 }
 
-pub fn parse(toparse: &str) -> Node {
+pub fn parse(toparse: &str) -> Tree<ASTNode> {
     let parsed = RipstopParser::parse(Rule::module_declaration, toparse)
         .expect("Parse failed!")
         .next()
         .unwrap();
-    return parse_value(parsed);
 
-    fn parse_value(pair: Pair<Rule>) -> Node {
+    let mut tree = Tree::<ASTNode>::new();
+    parse_value(&mut tree, parsed);
+    return tree;
+
+    fn parse_value(tree: &mut Tree<ASTNode>, pair: Pair<Rule>) -> Option<NodeId> {
         let rule = pair.as_rule();
         let mut inner_rules = pair.into_inner();
-        match rule {
-            Rule::module_declaration => Node::ModuleDeclaration {
+
+        let node_data = match rule {
+            Rule::module_declaration => Some(ASTNode::ModuleDeclaration {
                 id: inner_rules.next().unwrap().as_str().to_string(),
                 in_values: parse_variable_declarations(inner_rules.next().unwrap()),
                 out_values: parse_variable_declarations(inner_rules.next().unwrap()),
-                children: parse_block(inner_rules.next().unwrap()),
-            },
-            Rule::assignment => Node::Assign {
-                lhs: Box::new(parse_value(inner_rules.next().unwrap())),
-                rhs: Box::new(parse_value(inner_rules.next().unwrap())),
-            },
-            Rule::indexed_variable => Node::VariableReference {
+            }),
+            Rule::assignment => Some(ASTNode::Assign),
+            Rule::indexed_variable => Some(ASTNode::VariableReference {
                 var_id: inner_rules.next().unwrap().as_str().to_string(),
                 t_offset: parse_t_offset(inner_rules.next().unwrap()),
-            },
-            Rule::unary_operation => match inner_rules
-                .next()
-                .unwrap()
-                .into_inner()
-                .next()
-                .unwrap()
-                .as_rule()
-            {
-                Rule::bitwise_inverse => Node::BitwiseInverse {
-                    child: Box::new(parse_value(inner_rules.next().unwrap())),
+            }),
+            Rule::unary_operation => Some(
+                match inner_rules
+                    .next()
+                    .unwrap()
+                    .into_inner()
+                    .next()
+                    .unwrap()
+                    .as_rule()
+                {
+                    Rule::bitwise_inverse => ASTNode::BitwiseInverse,
+                    _ => unreachable!(),
                 },
-                _ => unreachable!(),
-            },
-            Rule::binary_operation => {
-                PREC_CLIMBER.climb(inner_rules, parse_value, |lhs, op, rhs| {
-                    match op.as_rule() {
-                        Rule::addition => Node::Add {
-                            lhs: Box::new(lhs),
-                            rhs: Box::new(rhs),
-                        },
-                        Rule::subtraction => Node::Subtract {
-                            lhs: Box::new(lhs),
-                            rhs: Box::new(rhs),
-                        },
-                        _ => unreachable!(),
-                    }
-                })
-            }
-            Rule::variable_declaration => Node::VariableDeclaration {
+            ),
+            Rule::addition => None,
+            Rule::subtraction => None,
+            Rule::variable_declaration => Some(ASTNode::VariableDeclaration {
                 var_type: parse_type(inner_rules.next().unwrap()),
                 var_id: inner_rules.next().unwrap().as_str().to_string(),
-            },
+            }),
+            Rule::EOI => None,
             _ => {
                 println!("Unimplement rule '{:?}'", rule);
                 todo!();
             }
-        }
-    }
+        };
 
-    fn parse_block(pair: Pair<Rule>) -> Vec<Node> {
-        return pair.into_inner().map(parse_value).collect();
+        if let Some(data) = node_data {
+            let node = tree.new_node(data);
+            while let Some(child) = inner_rules.next() {
+                if let Some(child_node) = parse_value(tree, child) {
+                    tree.append_to(&node, &child_node).unwrap();
+                }
+            }
+            Some(node)
+        } else {
+            None
+        }
     }
 
     fn parse_variable_declarations(pair: Pair<Rule>) -> Vec<(Type, String)> {
