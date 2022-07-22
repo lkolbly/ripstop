@@ -1,0 +1,41 @@
+module digit_add(bits<4> a, bits<4> b, bit carryin) -> (bits<4> c, bit carryout) {
+    bits<4> intermediate;
+
+    intermediate[t] = a[t] + b[t] + 3'b0 ++ carryin[t];
+    if intermediate[t] >= 10 {
+        c[t] = intermediate[t] - 10;
+        carryout[t] = 1;
+    } else {
+        c[t] = intermediate[t];
+        carryout[t] = 0;
+    }
+}
+
+module number_add(bits<4>[4] a, bits<4>[4] b) -> (bits<4>[4] c, bit carry) {
+    instantiate digit_add as low_digit;
+
+    low_digit.carryin[t] = 0;
+    low_digit.a[t] = a[t][0];
+    low_digit.b[t] = b[t][0];
+    c[t][0] = low_digit.c[t];
+
+    instantiate digit_add as digit2;
+    digit2.carryin[t] = low_digit.carryout[t];
+    digit2.a[t] = a[t][1];
+    digit2.b[t] = b[t][1];
+    c[t][1] = digit2.c[t];
+
+    instantiate digit_add as digit3;
+    digit3.carryin[t] = digit2.carryout[t];
+    digit3.a[t] = a[t][2];
+    digit3.b[t] = b[t][2];
+    c[t][2] = digit3.c[t];
+
+    instantiate digit_add as digit4;
+    digit4.carryin[t] = digit3.carryout[t];
+    digit4.a[t] = a[t][3];
+    digit4.b[t] = b[t][3];
+    c[t][3] = digit4.c[t];
+
+    carry[t] = digit4.carryout[t];
+}
