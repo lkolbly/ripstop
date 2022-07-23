@@ -39,3 +39,20 @@ module number_add(bits<4>[4] a, bits<4>[4] b) -> (bits<4>[4] c, bit carry) {
 
     carry[t] = digit4.carryout[t];
 }
+
+// Iterative
+module number_add<const NDIGITS>(bits<4>[NDIGITS] a, bits<4>[NDIGITS] b) -> (bits<4>[NDIGITS] c, bit carryout) {
+    bit[NDIGITS+1] carry;
+    carry[t][0] = 0;
+
+    for i = 0..NDIGITS { // <- Does this look like 0 to NDIGITS, inclusive? (ala NDIGITS:0 notation)
+        instantiate digit_add as adder; // <- Note that `adder` is scoped to this loop
+        adder.carryin[t] = carry[t][i];
+        adder.a[t] = a[t][i];
+        adder.b[t] = b[t][i];
+        c[t][i] = adder.c[t];
+        carry[t][i+1] = adder.carryout[t];
+    }
+
+    carryout[t] = carry[NDIGITS];
+}

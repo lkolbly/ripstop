@@ -1,0 +1,149 @@
+module hello_world(bit awvalid, bits<32> awaddr, bit wvalid, bits<32> wdata, bits<4> wstrb, bit bready, bit arvalid, bits<32> araddr, bit rready)
+    -> (bit awready, bit wready, bit bvalid, bits<2> bresp, bit arready, bit rvalid, bits<32> rdata, bits<2> rresp)
+{
+    bits<32> hello_world_q, hello_world_q_byte_swapped, araddr_q, wr_addr;
+    bits<16> vled_q;
+    bit wr_active;
+
+    // Write request
+    if wr_active[t-1] && bvalid[t-1] && bready[t-1] {
+        wr_active[t] = 0;
+    } else if !wr_active[t-1] && awvalid[t-1] {
+        wr_active[t] = 1;
+    }
+    if awvalid[t-1] && !wr_active[t-1] {
+        wr_addr[t] = awaddr[t-1];
+    }
+    awready[t] = !wr_active[t];
+    wready[t] = wr_active[t] && wvalid[t];
+
+    // Write response
+    if bvalid[t-1] && bready[t-1] {
+        bvalid[t] = 0;
+    } else if !bvalid[t-1] && bready[t-1] {
+        bvalid[t] = 1;
+    }
+
+    // Read request
+    arvalid_q[t] = arvalid[t-1];
+    if arvalid[t-1] {
+        araddr_q[t] = araddr[t-1];
+    }
+    arready[t] = !arvalid_q[t] && !rvalid[t];
+
+    // Read response
+    if rvalid[t-1] && rready[t-1] {
+        rvalid[t] = 0;
+        rdata[t] = 0;
+        rresp[t] = 0;
+    } else if arvalid_q[t-1] {
+        rvalid[t] = 1;
+        if araddr_q == 0x500 { // HELLO_WORLD_REG_ADDR
+            rdata[t] = hello_world_q_byte_swapped[t];
+        } else if araddr_q == 0x504 { // VLED_REG_ADDR
+            rdata[t] = 16'b0 ++ vled_q;
+        } else {
+            rdata[t] = 0; // UNIMPLEMENTED_REG_VALUE
+        }
+        rresp[t] = 0;
+    }
+
+    // Hello world register
+    if wready[t-1] && wr_addr[t-1] == 0x500 { // HELLO_WORLD_REG_ADDR
+        hello_world_q[t] = wdata[t-1];
+    }
+    hello_world_q_byte_swapped[t] = hello_world_q[t][7:0] ++ hello_world_q[t][15:8] ++ hello_world_q[t][23:16] ++ hello_world_q[t][31:24];
+
+    // Virtual LED register
+    vled_q[t] = hello_world_q[t-1][15:0];
+}
+
+
+/*
+Here's the verilog code:
+(from https://github.com/aws/aws-fpga/blob/master/hdk/cl/examples/cl_hello_world/design/cl_hello_world.sv)
+
+// Write Request
+logic        wr_active;
+logic [31:0] wr_addr;
+
+always_ff @(posedge clk_main_a0)
+  if (!rst_main_n_sync) begin
+     wr_active <= 0;
+     wr_addr   <= 0;
+  end
+  else begin
+     wr_active <=  wr_active && bvalid  && bready ? 1'b0     :
+                  ~wr_active && awvalid           ? 1'b1     :
+                                                    wr_active;
+     wr_addr <= awvalid && ~wr_active ? awaddr : wr_addr     ;
+  end
+
+assign awready = ~wr_active;
+assign wready  =  wr_active && wvalid;
+
+// Write Response
+always_ff @(posedge clk_main_a0)
+  if (!rst_main_n_sync) 
+    bvalid <= 0;
+  else
+    bvalid <=  bvalid &&  bready           ? 1'b0  : 
+                         ~bvalid && wready ? 1'b1  :
+                                             bvalid;
+assign bresp = 0;
+
+// Read Request
+always_ff @(posedge clk_main_a0)
+   if (!rst_main_n_sync) begin
+      arvalid_q <= 0;
+      araddr_q  <= 0;
+   end
+   else begin
+      arvalid_q <= arvalid;
+      araddr_q  <= arvalid ? araddr : araddr_q;
+   end
+
+assign arready = !arvalid_q && !rvalid;
+
+// Read Response
+always_ff @(posedge clk_main_a0)
+   if (!rst_main_n_sync)
+   begin
+      rvalid <= 0;
+      rdata  <= 0;
+      rresp  <= 0;
+   end
+   else if (rvalid && rready)
+   begin
+      rvalid <= 0;
+      rdata  <= 0;
+      rresp  <= 0;
+   end
+   else if (arvalid_q) 
+   begin
+      rvalid <= 1;
+      rdata  <= (araddr_q == `HELLO_WORLD_REG_ADDR) ? hello_world_q_byte_swapped[31:0]:
+                (araddr_q == `VLED_REG_ADDR       ) ? {16'b0,vled_q[15:0]            }:
+                                                      `UNIMPLEMENTED_REG_VALUE        ;
+      rresp  <= 0;
+   end
+
+//-------------------------------------------------
+// Hello World Register
+//-------------------------------------------------
+// When read it, returns the byte-flipped value.
+
+always_ff @(posedge clk_main_a0)
+   if (!rst_main_n_sync) begin                    // Reset
+      hello_world_q[31:0] <= 32'h0000_0000;
+   end
+   else if (wready & (wr_addr == `HELLO_WORLD_REG_ADDR)) begin  
+      hello_world_q[31:0] <= wdata[31:0];
+   end
+   else begin                                // Hold Value
+      hello_world_q[31:0] <= hello_world_q[31:0];
+   end
+
+assign hello_world_q_byte_swapped[31:0] = {hello_world_q[7:0],   hello_world_q[15:8],
+                                           hello_world_q[23:16], hello_world_q[31:24]};
+*/
