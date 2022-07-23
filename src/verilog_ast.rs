@@ -23,8 +23,6 @@ pub enum VNode {
         id: String,
         in_values: Vec<String>,
         out_values: Vec<String>,
-
-        children: Vec<VNode>,
     },
 
     RegisterDeclare {
@@ -34,17 +32,11 @@ pub enum VNode {
         var_id: String,
     },
 
-    ///Feel free to rename. This represents 'assign var_a = var_b'
-    AssignKeyword {
-        lhs: Box<VNode>,
-        rhs: Box<VNode>,
-    },
-    ///'lhs <= rhs'
-    ClockAssign {
-        lhs: Box<VNode>,
-        rhs: Box<VNode>,
-    },
-    ///Represents a statement of the form: 'always @([trigger]) begin [children] end'
+    ///Feel free to rename. This represents `assign var_a = var_b`
+    AssignKeyword {},
+    ///`lhs <= rhs`
+    ClockAssign {},
+    ///Represents a statement of the form: `always @([trigger]) begin [children] end`
     AlwaysBegin {
         trigger: AlwaysBeginTriggerType,
         children: Vec<VNode>,
@@ -52,22 +44,14 @@ pub enum VNode {
 
     //Unary ops have one child
     ///Copied from ast::Node
-    BitwiseInverse {
-        child: Box<VNode>,
-    },
+    BitwiseInverse {},
 
     //Binary operators have two children
     ///Copied from ast::Node
-    Add {
-        lhs: Box<VNode>,
-        rhs: Box<VNode>,
-    },
+    Add {},
 
     ///Copied from ast::Node
-    Subtract {
-        lhs: Box<VNode>,
-        rhs: Box<VNode>,
-    },
+    Subtract {},
 }
 
 impl std::fmt::Display for VNode {

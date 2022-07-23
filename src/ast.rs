@@ -4,38 +4,11 @@ use std::{
     rc::Rc,
 };
 
+use crate::tree::Tree;
+
 #[derive(Debug, Clone)]
 pub enum Type {
     Bit,
-}
-
-//Some notes about this recurse_ast method:
-//1- This is not in its final form
-//2- This will not normally be optimally performant
-//3- The current parameters are clunky, and will be changed if a better way to do this appears (as it stands I don't understand Fn vs. FnMut enough to decide what's best)
-
-///Recursively applies function 'f' to each Node in the AST.
-/// 'f' takes a mutable reference to a node and a mutable reference of some value of type T. 'f' is called on each Node and then its children
-fn recurse_ast<T, F>(node: &mut Node, f: &mut F, t: &mut T)
-where
-    F: FnMut(&mut Node, &mut T) + Clone,
-{
-    (f)(node, t);
-
-    match node {
-        Node::ModuleDeclaration { children, .. } => {
-            for c in children {
-                recurse_ast(c, f, t);
-            }
-        }
-        Node::BitwiseInverse { child } => recurse_ast(child, f, t),
-        Node::Add { lhs, rhs } | Node::Subtract { lhs, rhs } | Node::Assign { lhs, rhs } => {
-            recurse_ast(lhs, f, t);
-            recurse_ast(rhs, f, t);
-        }
-        //Anthing without children doesn't need to be matched against
-        _ => (),
-    }
 }
 
 //Examples of future VerificationError variants: TypeMismatch, InvalidModuleReference
@@ -50,7 +23,7 @@ pub enum VerificationError {
 //Perhaps create a verification error enum and return a Vec<VerificationError>
 
 //Note: this is not optimized for performance
-pub fn verify_ast(node: &mut Node) -> Result<(), Vec<VerificationError>> {
+pub fn verify_ast(tree: &mut Tree<Node>) -> Result<(), Vec<VerificationError>> {
     //IMPORTANT: The default t-offset of any unused variable is 0 for now (should change later)
     //This means that a[t-10] = b[t-10] + c[t-9] won't become a[t-1] = b[t-1] + c[t]
 
@@ -192,8 +165,6 @@ pub enum Node {
         id: String,
         in_values: Vec<(Type, String)>,
         out_values: Vec<(Type, String)>,
-
-        children: Vec<Node>,
     },
     //Some examples of generated VariableReferences:
     //my_var[t] => var_id: "my_var", t_offset: 0
@@ -206,25 +177,12 @@ pub enum Node {
     },
     //Unary operators only have one child
     //Maybe extract operators into their own enum of sorts (or maybe just unary/binary ops)? Might not be helpful though
-    BitwiseInverse {
-        child: Box<Node>,
-    },
+    BitwiseInverse {},
 
     //Binary operators have two children
-    Add {
-        lhs: Box<Node>,
-        rhs: Box<Node>,
-    },
-
-    Subtract {
-        lhs: Box<Node>,
-        rhs: Box<Node>,
-    },
-
-    Assign {
-        lhs: Box<Node>,
-        rhs: Box<Node>,
-    },
+    Add {},
+    Subtract {},
+    Assign {},
 
     VariableDeclaration {
         var_type: Type,
