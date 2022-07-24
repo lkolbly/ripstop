@@ -58,6 +58,128 @@ module hello_world(bit awvalid, bits<32> awaddr, bit wvalid, bits<32> wdata, bit
     vled_q[t] = hello_world_q[t-1][15:0];
 }
 
+// With methods
+module hello_world() -> () {
+    method addr_write(bit awvalid, bits<32> awaddr) -> (bit awready);
+    method data_write(bit wvalid, bits<32> wdata, bits<4> wstrb) -> (bit wready);
+    method write_response(bit bready) -> (bit bvalid, bits<2> bresp);
+    method addr_read(bit arvalid, bits<32> araddr) -> (bit arready);
+    method data_read(bit rready) -> (bits<32> rdata, bits<2> rresp);
+
+    ...
+}
+
+// With... ports?
+port axi_write {
+    input bit awvalid,
+    input bits<32> awaddr,
+
+    input bit wvalid,
+    input bits<32> wdata,
+    input bits<4> wstrb,
+
+    input bit bready,
+
+    output bit awready,
+    output bit wready,
+    output bit bvalid,
+    output bits<2> bresp,
+};
+
+// Converts an AXI port into addr+data writes when the valid bit is set
+module axi_write(axi_write channel) -> (bit valid, bits<32> addr, bits<32> data) {
+    bits<32> wr_addr;
+    bit wr_active;
+
+    addr[t] = wr_addr[t];
+    valid[t] = wr_active[t];
+
+    // Write request
+    if wr_active[t-1] && channel.bvalid[t-1] && channel.bready[t-1] {
+        wr_active[t] = 0;
+    } else if !wr_active[t-1] && channel.awvalid[t-1] {
+        wr_active[t] = 1;
+    }
+    if channel.awvalid[t-1] && !wr_active[t-1] {
+        wr_addr[t] = awaddr[t-1];
+    }
+    channel.awready[t] = !wr_active[t];
+    channel.wready[t] = wr_active[t] && channel.wvalid[t];
+
+    // Write response
+    if channel.bvalid[t-1] && channel.bready[t-1] {
+        channel.bvalid[t] = 0;
+    } else if !channel.bvalid[t-1] && channel.bready[t-1] {
+        channel.bvalid[t] = 1;
+    }
+}
+
+port axi_read {
+    input bit arvalid,
+    input bits<32> araddr,
+    input bit rready,
+
+    output bit arready,
+    output bits<32> rdata,
+    output bits<2> rresp,
+}
+
+// Expects that data[t] corresponds to addr[t] - i.e., there is no cycle delay
+module axi_read(axi_read channel, bits<32> data) -> (bit addr_valid, bits<32> addr) {
+    bits<32> araddr_q;
+    bit arvalid_q;
+
+    // Read request
+    arvalid_q[t] = channel.arvalid[t-1];
+    if channel.arvalid[t-1] {
+        araddr_q[t] = channel.araddr[t-1];
+    }
+    channel.arready[t] = !arvalid_q[t] && !channel.rvalid[t];
+
+    addr[t] = araddr_q[t];
+    addr_valid[t] = arvalid_q[t];
+
+    // Read response
+    if channel.rvalid[t-1] && channel.rready[t-1] {
+        channel.rvalid[t] = 0;
+        channel.rdata[t] = 0;
+        channel.rresp[t] = 0;
+    } else if arvalid_q[t-1] {
+        channel.rvalid[t] = 1;
+        channel.rdata[t] = data[t];
+        channel.rresp[t] = 0;
+    }
+}
+
+module hello_world(axi_write write, axi_read read) {
+    instantiate axi_write as write_interpreter;
+    write_interpreter.channel = write;
+
+    if write_interpreter.valid[t] {
+        if write_interpreter.addr[t] == 0x500 {
+            // HELLO_WORLD_REG_ADDR
+        } else if write_interpreter.addr[t] == 0x504 {
+            // VLED_REG_ADDR
+        } else {
+            // Unknown address!
+        }
+    }
+
+    instantiate axi_read as reader;
+    reader.channel = read;
+
+    if reader.addr_valid[t] {
+        if reader.addr[t] == 0x500 {
+            // HELLO_WORLD_REG_ADDR
+            reader.data[t] = ...;
+        } else if reader.addr[t] == 0x504 {
+            // VLED_REG_ADDR
+        } else {
+            // Unknown address!
+        }
+    }
+}
+
 
 /*
 Here's the verilog code:
