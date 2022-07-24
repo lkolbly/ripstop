@@ -1,0 +1,267 @@
+// Note: All of the extern modules in this file have negative resets, resetn
+
+port axi_stream<T> {
+    input bit tvalid;
+    output bit tready;
+    input T tdata;
+}
+
+extern module floating_point_sub(bit s_axis_a_tvalid, bits<64> s_axis_a_tdata, bit s_axis_b_tvalid, bits<64> s_axis_b_tdata, bit m_axis_result_tready) ->
+    (bit s_axis_a_tready, bit s_axis_b_tready, bit m_axis_result_tvalid, bits<64> m_axis_result_tdata);
+
+module floating_point_sub_wrapper(axi_stream a, axi_stream b) -> (axi_stream result) {
+    instantiate floating_point_sub as fpu;
+    fpu.s_axis_a_tvalid[t] = a.tvalid[t];
+    fpu.s_axis_a_tdata[t] = a.tdata[t];
+    a.tready[t] = fpu.s_axis_a_tready[t];
+
+    fpu.s_axis_b_tvalid[t] = b.tvalid[t];
+    fpu.s_axis_b_tdata[t] = b.tdata[t];
+    b.tready[t] = fpu.s_axis_b_tready[t];
+
+    fpu.m_axis_result_tready[t] = result.tready;
+    result.tdata[t] = fpu.m_axis_result_tdata[t];
+    result.tvalid[t] = fpu.m_axis_result_tvalid[t];
+}
+
+extern module floating_point_mult(bit s_axis_a_tvalid, bits<64> s_axis_a_tdata, bit s_axis_b_tvalid, bits<64> s_axis_b_tdata, bit m_axis_result_tready) ->
+    (bit s_axis_a_tready, bit s_axis_b_tready, bit m_axis_result_tvalid, bits<64> m_axis_result_tdata);
+
+module floating_point_mult_wrapper(axi_stream a, axi_stream b) -> (axi_stream result) {
+    instantiate floating_point_mult as fpu;
+    fpu.s_axis_a_tvalid[t] = a.tvalid[t];
+    fpu.s_axis_a_tdata[t] = a.tdata[t];
+    a.tready[t] = fpu.s_axis_a_tready[t];
+
+    fpu.s_axis_b_tvalid[t] = b.tvalid[t];
+    fpu.s_axis_b_tdata[t] = b.tdata[t];
+    b.tready[t] = fpu.s_axis_b_tready[t];
+
+    fpu.m_axis_result_tready[t] = result.tready;
+    result.tdata[t] = fpu.m_axis_result_tdata[t];
+    result.tvalid[t] = fpu.m_axis_result_tvalid[t];
+}
+
+extern module floating_point_to_fxp(bit s_axis_a_tvalid, bits<64> s_axis_a_tdata, bit m_axis_result_tready)
+    -> (bit s_axis_a_tready, bit m_axis_result_tvalid, bits<32> m_axis_result_tdata);
+
+module floating_point_to_fxp_wrapper(axi_stream a) -> (axi_stream result) {
+    instantiate floating_point_to_fxp as fpu;
+    fpu.s_axis_a_tvalid[t] = a.tvalid[t];
+    fpu.s_axis_a_tdata[t] = a.tdata[t];
+    a.tready[t] = fpu.s_axis_a_tready[t];
+
+    result.tvalid[t] = fpu.m_axis_result_tvalid[t];
+    result.tdata[t] = fpu.m_axis_result_tdata[t];
+    fpu.m_axis_result_tready[t] = result.tready[t];
+}
+
+// x must be held until out_valid is true
+module logistic_map(bits<64> x, bit x_valid) -> (bits<64> out, bit out_valid) {
+    // x_valid must be de-asserted after a single clock cycle and may not re-assert until out_valid
+    assert(!(x_valid[t] && x_valid[t-1]));
+    // TODO: Assert that it never re-asserts
+    // TODO: Assert that x is held until out_valid is true
+
+    instantiate floating_point_sub_wrapper as one_minus_x;
+    one_minus_x.a.tvalid[t] = 1;
+    one_minus_x.a.tdata = 64'h3FF0000000000000; // 1 in IEEE754
+
+    instantiate floating_point_mult_wrapper as times_x;
+    times_x.a.tvalid[t] = one_minus_x.result.tvalid[t];
+    times_x.a.tdata[t] = x[t];
+    times_x.b = one_minus_x.result;
+
+    instantiate floating_point_mult_wrapper as times_r;
+    times_r.a.tvalid[t] = 1;
+    times_r.a.tdata[t] = 64'h400CA3D70A3D70A4; // 3.58 in IEEE754
+    times_r.b = times_x.result;
+    times_r.result.tready[t] = 1;
+
+    out[t] = times_r.result.tdata[t];
+    out_valid[t] = times_r.result.tvalid[t];
+}
+
+// Runs the iterative logistic map as fast as possible
+module logistic_map_runner() -> (bit new_result, bits<32> fxp_result) {
+    bits<5> reset_counter;
+    reset_counter[0] = 20; // Wait 20 cycles for the FPUs to come up.
+                           // Yes, I know this is massive overkill.
+
+    instantiate logistic_map as lm;
+    instantiate floating_point_to_fxp_wrapper as fxp_converter;
+
+    if reset_counter[t-1] == 1 {
+        // Send the initial value
+        lm.x[t] = 64'h3FE0000000000000;
+        lm.x_valid[t] = 1;
+    } else if reset_counter[t-1] > 1 {
+        reset_counter[t] = reset_counter[t-1] - 1;
+    } else if lm.out_valid[t-1] == 1 {
+        lm.x[t] = lm.out[t-1];
+        lm.x_valid[t] = 1;
+    } else {
+        lm.x_valid[t] = 0;
+    }
+
+    if lm.out_valid[t-1] == 1 {
+        fxp_converter.a.tvalid[t] = 1;
+        fxp_converter.a.tdata[t] = lm.out[t-1];
+    } else {
+        fxp_converter.a.tvalid[t] = 0;
+    }
+
+    fxp_converter.result.tready[t] = 1;
+    if fxp_converter.result.tvalid[t] {
+        fxp_result[t] = fxp_converter.result.tdata[t];
+        new_result[t] = 1;
+    } else {
+        new_result[t] = 0;
+    }
+}
+
+module pwm(bits<16> duty_cycle) -> (bit signal) {
+    bits<16> counter;
+    counter[t] = counter[t-1] + 1;
+    signal[t] = counter[t-1] < duty_cycle[t-1];
+}
+
+port axi_write {
+	input bits<4> awid,
+    input bits<32> awaddr,
+	input bits<8> awlen,
+	input bits<3> awsize,
+	input bits<2> awburst,
+	input bit awlock,
+	input bits<4> awcache,
+	input bits<3> awprot,
+	input bits<4> awqos,
+    input bit awvalid,
+    output bit awready,
+
+	input bit wlast,
+    input bit wvalid,
+    input bits<32> wdata,
+    input bits<4> wstrb,
+    output bit wready,
+
+    input bit bready,
+    output bit bvalid,
+    output bits<2> bresp,
+	output bits<4> bid;
+}
+
+port axi_read {
+	input bits<4> arid;
+    input bits<32> araddr,
+	input bits<8> arlen,
+	input bits<3> arsize,
+	input bits<2> arburst,
+	input bit arlock,
+	input bits<4> arcache,
+	input bits<3> arprot,
+	input bits<4> arqos,
+    input bit arvalid,
+    output bit arready,
+
+    input bit rready,
+	output bits<...> rid,
+    output bits<32> rdata,
+    output bits<2> rresp,
+	output bit rlast,
+	output bit rvalid,
+}
+
+// axi_read and axi_write modules are defined in aws_hello_world.rp
+module ddr_tester() -> (axi_read ddr_axi_read, axi_write ddr_axi_write, bits<4> led) {
+	bits<32> state;
+
+	ddr_axi_write.awid[t] = 0;
+	ddr_axi_write.awaddr[t] = 0;
+	ddr_axi_write.awlen[t] = 0;
+	ddr_axi_write.awsize[t] = 2; // 4 bytes
+	ddr_axi_write.awburst[t] = 0; // Fixed
+	ddr_axi_write.awlock[t] = 0;
+	ddr_axi_write.awcache[t] = 3;
+	ddr_axi_write.awprot[t] = 0;
+	ddr_axi_write.awqos[t] = 0;
+
+	ddr_axi_write.wdata[t] = 32'hcafe_beef;
+	ddr_axi_write.wstrb[t] = 4'b1111; // All bytes are valid
+
+	ddr_axi_read.arid[t] = 0;
+	ddr_axi_read.araddr[t] = 0;
+	ddr_axi_read.arlen[t] = 0;
+	ddr_axi_read.arsize[t] = 2; // 4 bytes
+	ddr_axi_read.arburst[t] = 0; // Fixed
+	ddr_axi_read.arlock[t] = 0;
+	ddr_axi_read.arcache[t] = 3;
+	ddr_axi_read.arprot[t] = 0;
+	ddr_axi_read.arqos[t] = 0;
+
+	if state[t-1] == 0 {
+		ddr_axi_write.awvalid[t] = 1;
+		state[t] = 1;
+	} else if state[t-1] == 1 {
+		if ddr_axi_write.awready[t-1] == 1 {
+			ddr_axi_write.awvalid[t] = 0;
+			state[t] = 2;
+		}
+	} else if state[t-1] == 2 {
+		ddr_axi_write.wlast[t] = 1;
+		ddr_axi_write.wvalid[t] = 1;
+		state[t] = 3;
+	} else if state[t-1] == 3 {
+		if ddr_axi_write.wready[t-1] {
+			ddr_axi_write.wvalid[t] = 0;
+			state[t] = 4;
+		}
+	} else if state[t-1] == 4 {
+		if ddr_axi_write.bvalid[t-1] {
+			ddr_axi_write.bready[t] = 1;
+			if ddr_axi_write.bresp == 0 {
+				// Success!
+				state[t] = 5;
+			} else {
+				// Error
+				state[t] = 100;
+			}
+		}
+	} else if state[t-1] == 5 {
+		ddr_axi_write.bready[t] = 0;
+		led[t][0] = 1; // Write finished
+		state[t] = 6;
+	} else if state[t-1] == 6 {
+		ddr_axi_read.arvalid[t] = 1;
+		state[t] = 7;
+	} else if state[t-1] == 7 {
+		if ddr_axi_read.arready[t-1] {
+			ddr.axi_read.arvalid[t] = 0;
+			state[t] = 8;
+		}
+	} else if state[t-1] == 8 {
+		if ddr_axi_read.rvalid[t] {
+			ddr_axi_read.rready[t] = 1;
+
+			if ddr_axi_read.rresp == 0 {
+				// Successful read!
+				state[t] = 9;
+			} else {
+				// Error!
+				state[t] = 100;
+			}
+		}
+	} else if state[t-1] == 9 {
+		ddr_axi_read.rready[t] = 0;
+		led[t][1] = 1; // Read finished
+
+		if ddr_axi_read.rdata[t-1] == 32'hcafe_beef {
+			led[t][3] = 1; // Read correct value
+		}
+
+		state[t] = 100; // Finished
+	} else if state[t-1] == 100 {
+		ddr_axi_write.bready[t] = 0;
+		ddr_axi_read.rready[t] = 0;
+	}
+}
