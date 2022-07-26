@@ -1,5 +1,8 @@
 use std::fmt;
 
+use crate::tree::{Node, NodeId, Tree};
+
+#[derive(Debug, Clone)]
 pub enum AlwaysBeginTriggerType {
     ///*
     OnDepencyUpdate,
@@ -17,6 +20,7 @@ impl fmt::Display for AlwaysBeginTriggerType {
     }
 }
 
+#[derive(Debug, Clone)]
 pub enum VNode {
     ///Copypasta'd from ast::Node
     ModuleDeclaration {
@@ -39,7 +43,6 @@ pub enum VNode {
     ///Represents a statement of the form: `always @([trigger]) begin [children] end`
     AlwaysBegin {
         trigger: AlwaysBeginTriggerType,
-        children: Vec<VNode>,
     },
 
     //Unary ops have one child
@@ -54,33 +57,65 @@ pub enum VNode {
     Subtract {},
 }
 
-impl std::fmt::Display for VNode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        //Maybe I should make a recurse function, but not at the moment
-        let s = match self {
-            VNode::ModuleDeclaration {
-                id,
-                in_values,
-                out_values,
-                children,
-            } => todo!(),
-            VNode::RegisterDeclare { vars } => format!("reg {};", vars.join(", ")),
-            VNode::AlwaysBegin { children, trigger } => {
-                let children_string = children
-                    .iter()
-                    .map(|n| n.to_string())
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                format!("always @({}) begin\n{}end", trigger, children_string)
-            }
-            VNode::VariableReference { var_id } => format!("{var_id}"),
-            VNode::AssignKeyword { lhs, rhs } => format!("assign {lhs} = {rhs};"),
-            VNode::ClockAssign { lhs, rhs } => format!("{lhs} <= {rhs};"),
-            VNode::BitwiseInverse { child } => format!("~({child})"),
-            VNode::Add { lhs, rhs } => format!("{lhs} + {rhs}"),
-            VNode::Subtract { lhs, rhs } => format!("{lhs} - {rhs}"),
-        };
+pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>) -> String {
+    let this_node = &tree[head];
+    let children = this_node.children.clone();
 
-        write!(f, "{}", s)
-    }
+    //Maybe I should make a recurse function, but not at the moment
+    let s = match &this_node.data {
+        VNode::ModuleDeclaration {
+            id,
+            in_values,
+            out_values,
+        } => todo!(),
+        VNode::RegisterDeclare { vars } => format!("reg {};", vars.join(", ")),
+        VNode::AlwaysBegin { trigger } => {
+            let children_string = children
+                .unwrap()
+                .iter()
+                .map(|n| verilog_ast_to_string(*n, tree))
+                .collect::<Vec<_>>()
+                .join("\n");
+            format!("always @({}) begin\n{}end", trigger, children_string)
+        }
+        VNode::VariableReference { var_id } => format!("{var_id}"),
+        VNode::AssignKeyword {} => {
+            let children = children.unwrap();
+            format!(
+                "assign {} = {};",
+                verilog_ast_to_string(children[0], tree),
+                verilog_ast_to_string(children[1], tree)
+            )
+        }
+        VNode::ClockAssign {} => {
+            let children = children.unwrap();
+            format!(
+                "{} <= {};",
+                verilog_ast_to_string(children[0], tree),
+                verilog_ast_to_string(children[1], tree)
+            )
+        }
+        VNode::BitwiseInverse {} => {
+            let children = children.unwrap();
+            format!("~({})", verilog_ast_to_string(children[0], tree),)
+        }
+        VNode::Add {} => {
+            let children = children.unwrap();
+            format!(
+                "{} + {}",
+                verilog_ast_to_string(children[0], tree),
+                verilog_ast_to_string(children[1], tree)
+            )
+        }
+        VNode::Subtract {} => {
+            let children = children.unwrap();
+            format!(
+                "{} - {}",
+                verilog_ast_to_string(children[0], tree),
+                verilog_ast_to_string(children[1], tree)
+            )
+        }
+    };
+
+    s
 }

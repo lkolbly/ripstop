@@ -22,12 +22,12 @@ fn main() {
     );
     println!("{:#?}\n", a);
 
-    println!("Pre-verify:\n\n{}\n\n", compile_module(&a));
-    println!("{:#?}\n", a);
+    println!("Pre-verify:\n\n{:#?}\n\n", compile_module(&a));
+    //println!("{:#?}\n", a);
 
-    verify_ast(&mut a).unwrap();
+    //verify_ast(&mut a).unwrap();
 
-    println!("Post-verify:\n\n{}\n\n", compile_module(&a));
+    //println!("Post-verify:\n\n{}\n\n", compile_module(&a));
     println!("{:#?}\n", a);
 
     /*let b = parse(

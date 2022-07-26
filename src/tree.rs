@@ -11,6 +11,7 @@ pub enum TreeError {
 //PROBLEM?: We don't know where the head of the tree is
 //In some cases, it's fine to assume that the head of the tree is index 0 but that's definitely not true generically
 //This mostly just makes recursion and such harder, though
+#[derive(Debug, Clone)]
 pub struct Tree<T> {
     nodes: Vec<Node<T>>,
 }
@@ -68,7 +69,7 @@ impl<T> Tree<T> {
     }
 
     /// Tries to get the `Node<T>` with `id`, panics if it can't be found
-    pub fn get_node_mut_unchecked(&self, id: NodeId) -> &mut Node<T> {
+    pub fn get_node_mut_unchecked(&mut self, id: NodeId) -> &mut Node<T> {
         &mut self.nodes[id]
     }
 
@@ -94,12 +95,20 @@ impl<T> Tree<T> {
     ///
     /// However, this *does not* change the values of the nodes referred to by `a` and `b`
     pub fn swap(&mut self, a: NodeId, b: NodeId) {
+        if a == b {
+            return;
+        }
         //First, swap the `NodeId`s referenced by `a` and `b` without changing the values of `a` and `b`
         {
             //This is accomplished by swapping the two values then swapping their `data` back
             //This is not performant (requires more swaps than necessary), but that should not cause problems and this is more expandable/easier
             self.nodes.swap(a.index, b.index);
-            std::mem::swap(&mut self[a].data, &mut self[b].data);
+            //The reason this unsafe operation is actually fine is as follows:
+            //1. `a` and `b` are guaranteed to be in-bounds due to the above `self.nodes.swap(..)`
+            //2. `a` and `b` cannot be the same, since there's a check at the start of the method
+            unsafe {
+                std::ptr::swap(&mut self[b].data, &mut self[a].data);
+            }
         }
         //Then, the hard part: swap the ids referenced by `a` and `b`'s siblings so each sibling changes which node it references
         {
@@ -108,8 +117,8 @@ impl<T> Tree<T> {
             //  --But, if for example `foo` is a parent to `a` and a sibling to `b`, mutation is required
 
             //To make this easier, "dereference" `a` and `b`
-            let a = self[a];
-            let b = self[b];
+            let a = &self[a];
+            let b = &self[b];
         }
 
         todo!()
@@ -180,7 +189,7 @@ impl<T> Tree<T> {
             + offset;
 
         //First, update the id of all tree's nodes to match what their ids will be after appending
-        for n in tree.nodes {
+        for n in &mut tree.nodes {
             n.id += offset;
         }
         //Now, append all of tree's nodes to self
@@ -195,7 +204,14 @@ impl<T> Tree<T> {
     /// Applies a recursive operation `f` on every node on or below `n`. Note that `f` is applied to each node *before* their children
     ///
     /// Each node is passed a mutable reference to `val` during execution, which can be used to store recursion return values (such as errors)
-    pub fn recurse_on_node<V, F>(&mut self, n: NodeId, f: &F, val: &mut V) -> Result<(), TreeError>
+    ///
+    /// **BE WARNED**: ~~there be dragons~~ this method *does not* check for infinite loops at the moment
+    pub fn recurse_on_node<V, F>(
+        &mut self,
+        n: NodeId,
+        f: &mut F,
+        val: &mut V,
+    ) -> Result<(), TreeError>
     where
         F: FnMut(&mut T, &mut V) + Clone,
     {
@@ -203,7 +219,8 @@ impl<T> Tree<T> {
         //Apply the method on `n` before its children
         (f)(&mut node.data, val);
 
-        if let Some(children) = node.children {
+        //Iterate through the node's children and recursively apply on them
+        if let Some(children) = node.children.clone() {
             for c in children {
                 self.recurse_on_node(c, f, val)?;
             }
@@ -270,7 +287,7 @@ impl<T: std::fmt::Debug> fmt::Display for Tree<T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Node<T> {
     pub id: NodeId,
     pub parent: Option<NodeId>,
@@ -286,7 +303,7 @@ impl<T> Node<T> {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct NodeId {
     //using usize guarantees vector of nodes is not too large
     index: usize,

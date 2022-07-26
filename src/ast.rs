@@ -23,7 +23,7 @@ pub enum VerificationError {
 //Perhaps create a verification error enum and return a Vec<VerificationError>
 
 //Note: this is not optimized for performance
-pub fn verify_ast(tree: &mut Tree<Node>) -> Result<(), Vec<VerificationError>> {
+/*pub fn verify_ast(tree: &mut Tree<Node>) -> Result<(), Vec<VerificationError>> {
     //IMPORTANT: The default t-offset of any unused variable is 0 for now (should change later)
     //This means that a[t-10] = b[t-10] + c[t-9] won't become a[t-1] = b[t-1] + c[t]
 
@@ -125,7 +125,7 @@ pub fn verify_ast(tree: &mut Tree<Node>) -> Result<(), Vec<VerificationError>> {
     } else {
         Err(errs)
     }
-}
+}*/
 
 #[derive(Debug, Clone)]
 pub enum ASTNode {

@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    ast::{ASTNode, Node, Type},
+    ast::{ASTNode, Type},
     tree::{self, NodeId, Tree},
     verilog_ast::VNode,
 };
@@ -32,7 +32,7 @@ fn get_referenced_variables_and_highest_t_offset(
 
     //For each of these branches, register any variable references
     //Searching children recursively will occur *after* this match statement
-    match input.data {
+    match &input.data {
         ASTNode::ModuleDeclaration {
             id,
             in_values,
@@ -47,16 +47,16 @@ fn get_referenced_variables_and_highest_t_offset(
             }
         }
         ASTNode::VariableReference { var_id, t_offset } => {
-            register_reference(var_id.clone(), t_offset, &mut variables);
+            register_reference(var_id.clone(), *t_offset, &mut variables);
         }
         _ => (),
     }
 
     //Get the hashmap for each child of `input` and register the variable references
-    if let Some(children) = input.children {
+    if let Some(children) = &input.children {
         for c in children {
             //This is where the recursion comes in
-            let mut hm = get_referenced_variables_and_highest_t_offset(tree, &tree[c]);
+            let mut hm = get_referenced_variables_and_highest_t_offset(tree, &tree[*c]);
             register_references(&mut hm, &mut variables);
         }
     }
@@ -72,38 +72,42 @@ fn compile_expression(tree: &Tree<ASTNode>, node: NodeId) -> Tree<VNode> {
     let mut v_tree = Tree::new();
 
     //Create a new node. This node will be the head of `v_tree`
-    let head = v_tree.new_node(match tree[node].data {
+    let head = v_tree.new_node(match &tree[node].data {
         //Copied from compile_module()
         ASTNode::ModuleDeclaration {
             id,
             in_values,
             out_values,
         } => {
-            let mut in_values: Vec<String> = in_values.into_iter().map(|pair| pair.1).collect();
-            let out_values: Vec<String> = out_values.into_iter().map(|pair| pair.1).collect();
+            let mut in_values: Vec<String> =
+                in_values.into_iter().map(|pair| pair.1.clone()).collect();
+            let out_values: Vec<String> =
+                out_values.into_iter().map(|pair| pair.1.clone()).collect();
 
             in_values.push("rst".to_string());
             in_values.push("clk".to_string());
 
             VNode::ModuleDeclaration {
-                id,
+                id: id.clone(),
                 in_values,
                 out_values,
             }
         }
-        ASTNode::VariableReference { var_id, t_offset } => VNode::VariableReference { var_id },
+        ASTNode::VariableReference { var_id, t_offset } => VNode::VariableReference {
+            var_id: var_id.clone(),
+        },
         ASTNode::BitwiseInverse {} => VNode::BitwiseInverse {},
         ASTNode::Add {} => VNode::Add {},
         ASTNode::Subtract {} => VNode::Subtract {},
         //Hopefully the assignment refers to a clock assign, otherwise you're screwed (this will change)
         ASTNode::Assign {} => VNode::ClockAssign {},
-        ASTNode::VariableDeclaration { var_type, var_id } => {
-            VNode::RegisterDeclare { vars: vec![var_id] }
-        }
+        ASTNode::VariableDeclaration { var_type, var_id } => VNode::RegisterDeclare {
+            vars: vec![var_id.clone()],
+        },
     });
 
     //Append each children's v_tree to the head of `v_tree` and return `v_tree`
-    if let Some(children) = tree[node].children {
+    if let Some(children) = &tree[node].children {
         for c in children {
             let t = compile_expression(tree, node);
         }
@@ -112,6 +116,7 @@ fn compile_expression(tree: &Tree<ASTNode>, node: NodeId) -> Tree<VNode> {
     v_tree
 }
 
+#[derive(Debug, Clone)]
 pub enum CompileError {
     CouldNotFindASTHead,
 }
@@ -125,7 +130,7 @@ pub fn compile_module(tree: &Tree<ASTNode>) -> Result<Tree<VNode>, CompileError>
         id,
         in_values,
         out_values,
-    } = tree[head].data
+    } = &tree[head].data
     {
         //Stores pairs of (variable ID, highest used t-offset)
         //This is needed to create the registers
@@ -137,14 +142,16 @@ pub fn compile_module(tree: &Tree<ASTNode>) -> Result<Tree<VNode>, CompileError>
         //Create the head of the tree, a module declaration
         //rst and clk are always included as inputs in `v_tree`, but not `tree`
         let v_head = {
-            let mut in_values: Vec<String> = in_values.into_iter().map(|pair| pair.1).collect();
-            let out_values: Vec<String> = out_values.into_iter().map(|pair| pair.1).collect();
+            let mut in_values: Vec<String> =
+                in_values.into_iter().map(|pair| pair.1.clone()).collect();
+            let out_values: Vec<String> =
+                out_values.into_iter().map(|pair| pair.1.clone()).collect();
 
             in_values.push("rst".to_string());
             in_values.push("clk".to_string());
 
             v_tree.new_node(VNode::ModuleDeclaration {
-                id,
+                id: id.clone(),
                 in_values,
                 out_values,
             })
@@ -160,7 +167,7 @@ pub fn compile_module(tree: &Tree<ASTNode>) -> Result<Tree<VNode>, CompileError>
         }
 
         //User-defined logic compilation (recursive at the moment)
-        if let Some(children) = tree[head].children {
+        if let Some(children) = &tree[head].children {
             for c in children {
                 todo!()
             }

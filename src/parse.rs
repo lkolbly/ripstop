@@ -76,7 +76,7 @@ pub fn parse(toparse: &str) -> Tree<ASTNode> {
             let node = tree.new_node(data);
             while let Some(child) = inner_rules.next() {
                 if let Some(child_node) = parse_value(tree, child) {
-                    tree.append_to(&node, &child_node).unwrap();
+                    tree.append_to(node, child_node).unwrap();
                 }
             }
             Some(node)
