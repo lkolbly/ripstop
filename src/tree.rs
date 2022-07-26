@@ -274,8 +274,8 @@ impl<T: std::fmt::Debug> fmt::Display for Tree<T> {
                         let parent = self.get_node(parent_id).unwrap();
                         if let Some(uncle_id) = parent.next_sibling {
                             cur_node = self.get_node(uncle_id).unwrap();
-                            found_next = true;
                             indent_level -= 1;
+                            found_next = true;
                         }
                     }
                 }
