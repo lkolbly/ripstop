@@ -4,15 +4,15 @@ use std::{
 };
 
 use crate::{
-    ast::{Node, Type},
+    ast::{ASTNode, Node, Type},
     tree::{self, NodeId, Tree},
     verilog_ast::VNode,
 };
 
 ///Returns a list of all variables referenced in the input AST and the highest t-value referenced for each variable. This is accomplished recursively
 fn get_referenced_variables_and_highest_t_offset(
-    tree: &Tree<Node>,
-    input: &tree::Node<Node>,
+    tree: &Tree<ASTNode>,
+    input: &tree::Node<ASTNode>,
 ) -> HashMap<String, i64> {
     //Takes a found variable reference and registers it appropriately, either adding it to the hashmap, incrementing the hashmap value, or leaving it alone
     fn register_reference(var_id: String, t_offset: i64, hm: &mut HashMap<String, i64>) {
@@ -33,7 +33,7 @@ fn get_referenced_variables_and_highest_t_offset(
     //For each of these branches, register any variable references
     //Searching children recursively will occur *after* this match statement
     match input.data {
-        Node::ModuleDeclaration {
+        ASTNode::ModuleDeclaration {
             id,
             in_values,
             out_values,
@@ -46,7 +46,7 @@ fn get_referenced_variables_and_highest_t_offset(
                 variables.insert(v.1.clone(), 0);
             }
         }
-        Node::VariableReference { var_id, t_offset } => {
+        ASTNode::VariableReference { var_id, t_offset } => {
             register_reference(var_id.clone(), t_offset, &mut variables);
         }
         _ => (),
@@ -68,13 +68,13 @@ fn get_referenced_variables_and_highest_t_offset(
 //1. Currently, every single assignment will become a clocked assignment, when it could be either an `assign` statement or a clocked assign
 //2. There are probably more problems I'm not thinking of
 /// Compiles the given tree (from the given node downwards) into a verilog AST. Currently accomplished recursively
-fn compile_expression(tree: &Tree<Node>, node: NodeId) -> Tree<VNode> {
+fn compile_expression(tree: &Tree<ASTNode>, node: NodeId) -> Tree<VNode> {
     let mut v_tree = Tree::new();
 
     //Create a new node. This node will be the head of `v_tree`
     let head = v_tree.new_node(match tree[node].data {
         //Copied from compile_module()
-        Node::ModuleDeclaration {
+        ASTNode::ModuleDeclaration {
             id,
             in_values,
             out_values,
@@ -91,13 +91,13 @@ fn compile_expression(tree: &Tree<Node>, node: NodeId) -> Tree<VNode> {
                 out_values,
             }
         }
-        Node::VariableReference { var_id, t_offset } => VNode::VariableReference { var_id },
-        Node::BitwiseInverse {} => VNode::BitwiseInverse {},
-        Node::Add {} => VNode::Add {},
-        Node::Subtract {} => VNode::Subtract {},
+        ASTNode::VariableReference { var_id, t_offset } => VNode::VariableReference { var_id },
+        ASTNode::BitwiseInverse {} => VNode::BitwiseInverse {},
+        ASTNode::Add {} => VNode::Add {},
+        ASTNode::Subtract {} => VNode::Subtract {},
         //Hopefully the assignment refers to a clock assign, otherwise you're screwed (this will change)
-        Node::Assign {} => VNode::ClockAssign {},
-        Node::VariableDeclaration { var_type, var_id } => {
+        ASTNode::Assign {} => VNode::ClockAssign {},
+        ASTNode::VariableDeclaration { var_type, var_id } => {
             VNode::RegisterDeclare { vars: vec![var_id] }
         }
     });
@@ -117,11 +117,11 @@ pub enum CompileError {
 }
 
 ///Compiles a single module into Verilog from an AST
-pub fn compile_module(tree: &Tree<Node>) -> Result<Tree<VNode>, CompileError> {
+pub fn compile_module(tree: &Tree<ASTNode>) -> Result<Tree<VNode>, CompileError> {
     //A little bit of a workaround in order to make this work well with the ? operator
     let head = tree.find_head().ok_or(CompileError::CouldNotFindASTHead)?;
 
-    if let Node::ModuleDeclaration {
+    if let ASTNode::ModuleDeclaration {
         id,
         in_values,
         out_values,
