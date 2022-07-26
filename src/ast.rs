@@ -1,11 +1,3 @@
-use std::{
-    cell::{RefCell, RefMut},
-    collections::{HashMap, HashSet},
-    rc::Rc,
-};
-
-use crate::tree::Tree;
-
 #[derive(Debug, Clone)]
 pub enum Type {
     Bit,

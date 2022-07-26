@@ -11,11 +11,7 @@ use pest::prec_climber::Operator;
 use pest::prec_climber::PrecClimber;
 use pest::Parser;
 
-use std::borrow::BorrowMut;
-use std::{
-    cell::{RefCell, RefMut},
-    rc::Rc,
-};
+use std::{cell::RefCell, rc::Rc};
 
 #[derive(Parser)]
 #[grammar = "grammar.pest"]
@@ -79,7 +75,7 @@ pub fn parse(toparse: &str) -> Tree<ASTNode> {
 
         if let Some(data) = node_data {
             let node = tree.new_node(data);
-            while let Some(child) = inner_rules.next() {
+            for child in inner_rules {
                 if let Some(child_node) = parse_value(tree, child) {
                     tree.append_to(node, child_node).unwrap();
                 }
@@ -144,6 +140,6 @@ pub fn parse(toparse: &str) -> Tree<ASTNode> {
             }
         };
         let int: i64 = inner_rules.next().unwrap().as_str().parse().unwrap();
-        return sign * int;
+        sign * int
     }
 }

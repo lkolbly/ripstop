@@ -30,7 +30,7 @@ impl<T> Tree<T> {
     /// Finds the first node without any parents. If no such node exists, returns `None`
     pub fn find_head(&self) -> Option<NodeId> {
         for i in 0..self.nodes.len() {
-            if let None = self.nodes[i].parent {
+            if self.nodes[i].parent.is_none() {
                 return Some(i.into());
             }
         }
@@ -196,7 +196,7 @@ impl<T> Tree<T> {
         self.nodes.append(&mut tree.nodes);
 
         //Finally, append the tree's head to `nodeid`
-        self.append_to(nodeid, tree_head);
+        self.append_to(nodeid, tree_head)?;
 
         Ok(offset)
     }
