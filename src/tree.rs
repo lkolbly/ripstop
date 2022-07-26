@@ -297,12 +297,6 @@ pub struct Node<T> {
     pub data: T,
 }
 
-impl<T> Node<T> {
-    pub fn append(&mut self, toappend: NodeId, tree: &mut Tree<T>) -> Result<(), TreeError> {
-        tree.append_to(self.id, toappend)
-    }
-}
-
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct NodeId {
     //using usize guarantees vector of nodes is not too large
