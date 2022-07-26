@@ -7,7 +7,7 @@ variable_declaration = { variable_type ~ name }
 variable_type = { bit_type }
 bit_type = { "bit" }
 
-block = { "{" ~ statement* ~ "}" }
+block = _{ "{" ~ statement* ~ "}" }
 
 indexed_variable = { name ~ "[" ~ variable_index ~ "]" }
 variable_index = { "t" ~ (( addition | subtraction ) ~ pos_integer)? }
