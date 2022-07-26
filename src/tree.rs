@@ -243,8 +243,9 @@ impl<T> IntoIterator for Tree<T> {
 
 impl<T: std::fmt::Debug> fmt::Display for Tree<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let root = self.nodes.get(0);
-        if let Some(root_node) = root {
+        let root = self.find_head();
+        if let Some(root_id) = root {
+            let root_node = self.get_node(root_id).unwrap();
             let mut cur_node = root_node;
             let mut indent_level = 0;
             while {
