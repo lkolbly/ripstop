@@ -11,6 +11,12 @@ use pest::prec_climber::Operator;
 use pest::prec_climber::PrecClimber;
 use pest::Parser;
 
+use std::borrow::BorrowMut;
+use std::{
+    cell::{RefCell, RefMut},
+    rc::Rc,
+};
+
 #[derive(Parser)]
 #[grammar = "grammar.pest"]
 struct RipstopParser;
@@ -59,8 +65,7 @@ pub fn parse(toparse: &str) -> Tree<ASTNode> {
                     _ => unreachable!(),
                 },
             ),
-            Rule::addition => None,
-            Rule::subtraction => None,
+            Rule::binary_operation => None,
             Rule::variable_declaration => Some(ASTNode::VariableDeclaration {
                 var_type: parse_type(inner_rules.next().unwrap()),
                 var_id: inner_rules.next().unwrap().as_str().to_string(),
@@ -80,6 +85,28 @@ pub fn parse(toparse: &str) -> Tree<ASTNode> {
                 }
             }
             Some(node)
+        } else if let Rule::binary_operation = rule {
+            let treerc = Rc::new(RefCell::new(tree));
+
+            PREC_CLIMBER.climb(
+                inner_rules.clone(),
+                |pair| parse_value(&mut (*treerc).borrow_mut(), pair),
+                |lhs, op, rhs| {
+                    let data = match op.as_rule() {
+                        Rule::addition => ASTNode::Add,
+                        Rule::subtraction => ASTNode::Subtract,
+                        _ => unreachable!(),
+                    };
+                    let child = (&mut (*treerc).borrow_mut()).new_node(data);
+                    (&mut (*treerc).borrow_mut())
+                        .append_to(child, lhs.unwrap())
+                        .unwrap();
+                    (&mut (*treerc).borrow_mut())
+                        .append_to(child, rhs.unwrap())
+                        .unwrap();
+                    Some(child)
+                },
+            )
         } else {
             None
         }
