@@ -243,18 +243,31 @@ impl<T> IntoIterator for Tree<T> {
 
 impl<T: std::fmt::Debug> fmt::Display for Tree<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // Get the root node's ID.
         let root = self.find_head();
+
+        // Check that this tree has a root.
         if let Some(root_id) = root {
+            // Get the actual root node from it's ID.
             let root_node = self.get_node(root_id).unwrap();
+
+            // Keep track of the current node and its depth while traversing the tree.
             let mut cur_node = root_node;
             let mut indent_level = 0;
+
+            // This is the equivalent of a do-while loop, with the work being done before checking the condition.
             while {
+                // Write the current node's data, indented with 2 * indent_level spaces.
                 f.write_fmt(format_args!(
                     "{}{:?} \n",
                     "  ".repeat(indent_level),
                     cur_node.data
                 ))?;
+
+                // Keep track of whether we've found another node in the tree
                 let mut found_next = false;
+
+                // If this node has children, move to the first of those children. Children have one greater depth than their parent
                 if let Some(children) = &cur_node.children {
                     let child = children.get(0);
                     if let Some(child_id) = child {
@@ -263,12 +276,16 @@ impl<T: std::fmt::Debug> fmt::Display for Tree<T> {
                         found_next = true;
                     }
                 }
+
+                // If this node doesn't have children but has a sibling following it, move to that sibling. Siblings have equal depth
                 if !found_next {
                     if let Some(sib_id) = cur_node.next_sibling {
                         cur_node = self.get_node(sib_id).unwrap();
                         found_next = true;
                     }
                 }
+
+                // If this node has neither children nor a next sibling, check if it has a next uncle (parent's next sibling). If so, move to that uncle. Uncles have one less depth than their nephews
                 if !found_next {
                     if let Some(parent_id) = cur_node.parent {
                         let parent = self.get_node(parent_id).unwrap();
@@ -279,22 +296,41 @@ impl<T: std::fmt::Debug> fmt::Display for Tree<T> {
                         }
                     }
                 }
+
+                // If a node has no children, no next sibling, and no next uncle, we are finished writing the tree and found_next will be false
                 found_next
             } {}
+
+            // Using this just to return the formatted string
             write!(f, "")
         } else {
+            // If tree has no root, it's considered empty.
             write!(f, "Empty Tree")
         }
     }
 }
 
+/// Generic node struct that stores references to siblings, parents, and children as well as the node's data.
 #[derive(Debug, Clone)]
 pub struct Node<T> {
+    /// This node's ID.
     pub id: NodeId,
+
+    /// This node's parent.
     pub parent: Option<NodeId>,
+
+    /// The previous sibling in this node's parent's ordered list of children.
     pub previous_sibling: Option<NodeId>,
+
+    /// The next sibling in this node's parent's ordered list of children.
     pub next_sibling: Option<NodeId>,
+
+    /// An ordered list of this node's children.
     pub children: Option<Vec<NodeId>>,
+
+    /// The non-positional data of this node. This may simply be a label or contain more information.
+    ///
+    /// For example, an addition node needs no additional data besides the fact that it's an addition node, but a variable reference node needs to store the name of the variable.
     pub data: T,
 }
 
