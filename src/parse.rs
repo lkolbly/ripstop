@@ -1,4 +1,5 @@
 use crate::ast::ASTNode;
+use crate::ast::ASTNodeType;
 use crate::ast::Type;
 use crate::tree::NodeId;
 use crate::tree::Tree;
@@ -37,14 +38,14 @@ pub fn parse(toparse: &str) -> Tree<ASTNode> {
         let rule = pair.as_rule();
         let mut inner_rules = pair.into_inner();
 
-        let node_data = match rule {
-            Rule::module_declaration => Some(ASTNode::ModuleDeclaration {
+        let node_type = match rule {
+            Rule::module_declaration => Some(ASTNodeType::ModuleDeclaration {
                 id: inner_rules.next().unwrap().as_str().to_string(),
                 in_values: parse_variable_declarations(inner_rules.next().unwrap()),
                 out_values: parse_variable_declarations(inner_rules.next().unwrap()),
             }),
-            Rule::assignment => Some(ASTNode::Assign),
-            Rule::indexed_variable => Some(ASTNode::VariableReference {
+            Rule::assignment => Some(ASTNodeType::Assign),
+            Rule::indexed_variable => Some(ASTNodeType::VariableReference {
                 var_id: inner_rules.next().unwrap().as_str().to_string(),
                 t_offset: parse_t_offset(inner_rules.next().unwrap()),
             }),
@@ -57,12 +58,12 @@ pub fn parse(toparse: &str) -> Tree<ASTNode> {
                     .unwrap()
                     .as_rule()
                 {
-                    Rule::bitwise_inverse => ASTNode::BitwiseInverse,
+                    Rule::bitwise_inverse => ASTNodeType::BitwiseInverse,
                     _ => unreachable!(),
                 },
             ),
             Rule::binary_operation => None,
-            Rule::variable_declaration => Some(ASTNode::VariableDeclaration {
+            Rule::variable_declaration => Some(ASTNodeType::VariableDeclaration {
                 var_type: parse_type(inner_rules.next().unwrap()),
                 var_id: inner_rules.next().unwrap().as_str().to_string(),
             }),
@@ -73,7 +74,8 @@ pub fn parse(toparse: &str) -> Tree<ASTNode> {
             }
         };
 
-        if let Some(data) = node_data {
+        if let Some(n_type) = node_type {
+            let data = ASTNode { node_type: n_type };
             let node = tree.new_node(data);
             for child in inner_rules {
                 if let Some(child_node) = parse_value(tree, child) {
@@ -88,11 +90,12 @@ pub fn parse(toparse: &str) -> Tree<ASTNode> {
                 inner_rules.clone(),
                 |pair| parse_value(&mut (*treerc).borrow_mut(), pair),
                 |lhs, op, rhs| {
-                    let data = match op.as_rule() {
-                        Rule::addition => ASTNode::Add,
-                        Rule::subtraction => ASTNode::Subtract,
+                    let n_type = match op.as_rule() {
+                        Rule::addition => ASTNodeType::Add,
+                        Rule::subtraction => ASTNodeType::Subtract,
                         _ => unreachable!(),
                     };
+                    let data = ASTNode { node_type: n_type };
                     let child = (&mut (*treerc).borrow_mut()).new_node(data);
                     (&mut (*treerc).borrow_mut())
                         .append_to(child, lhs.unwrap())

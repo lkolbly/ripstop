@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    ast::{ASTNode, Type},
+    ast::{ASTNode, ASTNodeType, Type},
     tree::{self, NodeId, Tree},
     verilog_ast::VNode,
 };
@@ -32,8 +32,8 @@ fn get_referenced_variables_and_highest_t_offset(
 
     //For each of these branches, register any variable references
     //Searching children recursively will occur *after* this match statement
-    match &input.data {
-        ASTNode::ModuleDeclaration {
+    match &input.data.node_type {
+        ASTNodeType::ModuleDeclaration {
             id,
             in_values,
             out_values,
@@ -46,7 +46,7 @@ fn get_referenced_variables_and_highest_t_offset(
                 variables.insert(v.1.clone(), 0);
             }
         }
-        ASTNode::VariableReference { var_id, t_offset } => {
+        ASTNodeType::VariableReference { var_id, t_offset } => {
             register_reference(var_id.clone(), *t_offset, &mut variables);
         }
         _ => (),
@@ -72,9 +72,9 @@ fn compile_expression(tree: &Tree<ASTNode>, node: NodeId) -> Tree<VNode> {
     let mut v_tree = Tree::new();
 
     //Create a new node. This node will be the head of `v_tree`
-    let head = v_tree.new_node(match &tree[node].data {
+    let head = v_tree.new_node(match &tree[node].data.node_type {
         //Copied from compile_module()
-        ASTNode::ModuleDeclaration {
+        ASTNodeType::ModuleDeclaration {
             id,
             in_values,
             out_values,
@@ -93,15 +93,15 @@ fn compile_expression(tree: &Tree<ASTNode>, node: NodeId) -> Tree<VNode> {
                 out_values,
             }
         }
-        ASTNode::VariableReference { var_id, t_offset } => VNode::VariableReference {
+        ASTNodeType::VariableReference { var_id, t_offset } => VNode::VariableReference {
             var_id: var_id.clone(),
         },
-        ASTNode::BitwiseInverse {} => VNode::BitwiseInverse {},
-        ASTNode::Add {} => VNode::Add {},
-        ASTNode::Subtract {} => VNode::Subtract {},
+        ASTNodeType::BitwiseInverse {} => VNode::BitwiseInverse {},
+        ASTNodeType::Add {} => VNode::Add {},
+        ASTNodeType::Subtract {} => VNode::Subtract {},
         //Hopefully the assignment refers to a clock assign, otherwise you're screwed (this will change)
-        ASTNode::Assign {} => VNode::ClockAssign {},
-        ASTNode::VariableDeclaration { var_type, var_id } => VNode::RegisterDeclare {
+        ASTNodeType::Assign {} => VNode::ClockAssign {},
+        ASTNodeType::VariableDeclaration { var_type, var_id } => VNode::RegisterDeclare {
             vars: vec![var_id.clone()],
         },
     });
@@ -126,11 +126,11 @@ pub fn compile_module(tree: &Tree<ASTNode>) -> Result<Tree<VNode>, CompileError>
     //A little bit of a workaround in order to make this work well with the ? operator
     let head = tree.find_head().ok_or(CompileError::CouldNotFindASTHead)?;
 
-    if let ASTNode::ModuleDeclaration {
+    if let ASTNodeType::ModuleDeclaration {
         id,
         in_values,
         out_values,
-    } = &tree[head].data
+    } = &tree[head].data.node_type
     {
         //Stores pairs of (variable ID, highest used t-offset)
         //This is needed to create the registers

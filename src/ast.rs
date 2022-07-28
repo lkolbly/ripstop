@@ -1,3 +1,5 @@
+use pest::iterators::Pair;
+
 #[derive(Debug, Clone)]
 pub enum Type {
     Bit,
@@ -120,7 +122,12 @@ pub enum VerificationError {
 }*/
 
 #[derive(Debug, Clone)]
-pub enum ASTNode {
+pub struct ASTNode {
+    pub node_type: ASTNodeType,
+}
+
+#[derive(Debug, Clone)]
+pub enum ASTNodeType {
     //This is the head of a module. The code within a module is entirely children of the module
     ModuleDeclaration {
         id: String,
