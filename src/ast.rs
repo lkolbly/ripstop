@@ -121,9 +121,15 @@ pub enum VerificationError {
     }
 }*/
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ASTNode {
     pub node_type: ASTNodeType,
+}
+
+impl std::fmt::Debug for ASTNode {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{:?}", self.node_type)
+    }
 }
 
 #[derive(Debug, Clone)]
