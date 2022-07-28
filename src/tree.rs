@@ -277,23 +277,21 @@ impl<T: std::fmt::Debug> fmt::Display for Tree<T> {
                     }
                 }
 
-                // If this node doesn't have children but has a sibling following it, move to that sibling. Siblings have equal depth
-                if !found_next {
+                // If this node doesn't have children but has a sibling following it, move to that sibling.
+                // Otherwise, if this node has a parent, move to the parent to check for uncles.
+                // Loop until either an uncle (grand-uncle, grand-grand-uncle, etc.) is found or there are no more parents.
+                // Uncles have one less depth for each movement up the tree (i.e. each time we move to the parent).
+                while !found_next {
                     if let Some(sib_id) = cur_node.next_sibling {
                         cur_node = self.get_node(sib_id).unwrap();
                         found_next = true;
+                        break;
                     }
-                }
-
-                // If this node has neither children nor a next sibling, check if it has a next uncle (parent's next sibling). If so, move to that uncle. Uncles have one less depth than their nephews
-                if !found_next {
                     if let Some(parent_id) = cur_node.parent {
-                        let parent = self.get_node(parent_id).unwrap();
-                        if let Some(uncle_id) = parent.next_sibling {
-                            cur_node = self.get_node(uncle_id).unwrap();
-                            indent_level -= 1;
-                            found_next = true;
-                        }
+                        cur_node = self.get_node(parent_id).unwrap();
+                        indent_level -= 1;
+                    } else {
+                        break;
                     }
                 }
 
