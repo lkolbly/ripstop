@@ -300,6 +300,11 @@ impl<'a, T> Iterator for TreeIterator<'a, T> {
         // Otherwise, if this node has a parent, move to the parent to check for uncles.
         // Loop until either an uncle (grand-uncle, grand-grand-uncle, etc.) is found or there are no more parents.
         while !found_next {
+            if self.cur_node.id == self.head {
+                self.finished = true;
+                found_next = true;
+                break;
+            }
             if let Some(sib_id) = self.cur_node.next_sibling {
                 self.cur_node = self.tree.get_node(sib_id).unwrap();
                 found_next = true;
@@ -307,10 +312,6 @@ impl<'a, T> Iterator for TreeIterator<'a, T> {
             }
             if let Some(parent_id) = self.cur_node.parent {
                 self.cur_node = self.tree.get_node(parent_id).unwrap();
-                if parent_id == self.head {
-                    self.finished = true;
-                    found_next = true;
-                }
             } else {
                 break;
             }
