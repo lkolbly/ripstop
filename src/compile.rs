@@ -160,7 +160,12 @@ pub fn compile_module(tree: &Tree<ASTNode>) -> Result<Tree<VNode>, CompileError>
         //Register chain creation for each variable
         {
             let reg_chain = VNode::RegisterDeclare {
-                vars: variables.clone().into_iter().map(|var| var.0).collect(),
+                vars: variables
+                    .clone()
+                    .into_iter()
+                    // Map each variable to its name with index (var_0, var_1, etc.), using flat_map to collect all values
+                    .flat_map(|var| (0..(var.1 + 1)).map(move |i| variable_name(&var.0, i)))
+                    .collect(),
             };
             let reg_chain = v_tree.new_node(reg_chain);
             v_tree.append_to(v_head, reg_chain);
