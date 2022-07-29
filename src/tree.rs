@@ -228,16 +228,100 @@ impl<T> Tree<T> {
 
         Ok(())
     }
+
+    /// Returns an in-order iterator over a subtree that returns `NodeId`'s.
+    /// Implemented non-recursively.
+    ///
+    /// The iterated subtree is all nodes below and including `head`.
+    ///
+    /// Iteration is done in-order, meaning it is depth-first, where children come after parents and children are traversed in order.
+    ///
+    /// To iterate over the entire tree, use `into_iter`.
+    pub fn iter_subtree(&'_ self, head: NodeId) -> TreeIterator<'_, T> {
+        TreeIterator::iter_subtree(self, head).unwrap()
+    }
 }
 
-//TODO: If Node<T> becomes encapsulated, turn this into Iter<T>
-impl<T> IntoIterator for Tree<T> {
-    type Item = Node<T>;
+impl<'a, T> IntoIterator for &'a Tree<T> {
+    type Item = NodeId;
 
-    type IntoIter = std::vec::IntoIter<Self::Item>;
+    type IntoIter = TreeIterator<'a, T>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.nodes.into_iter()
+        TreeIterator::iter_tree(self).unwrap()
+    }
+}
+
+/// In-order iterator for `Tree<T>`.
+pub struct TreeIterator<'a, T> {
+    tree: &'a Tree<T>,
+    head: NodeId,
+    cur_node: &'a Node<T>,
+    finished: bool,
+}
+
+impl<'a, T> TreeIterator<'a, T> {
+    fn iter_tree(tree: &'a Tree<T>) -> Result<TreeIterator<'a, T>, TreeError> {
+        Self::iter_subtree(tree, tree.find_head().unwrap())
+    }
+
+    fn iter_subtree(tree: &'a Tree<T>, head: NodeId) -> Result<TreeIterator<'a, T>, TreeError> {
+        Ok(TreeIterator {
+            tree,
+            head,
+            cur_node: tree.get_node(head)?,
+            finished: false,
+        })
+    }
+}
+
+impl<'a, T> Iterator for TreeIterator<'a, T> {
+    type Item = NodeId;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.finished {
+            return None;
+        }
+
+        let ret_id = self.cur_node.id;
+
+        // Keep track of whether we've found another node in the tree
+        let mut found_next = false;
+
+        // If this node has children, move to the first of those children.
+        if let Some(children) = &self.cur_node.children {
+            let child = children.get(0);
+            if let Some(child_id) = child {
+                self.cur_node = self.tree.get_node(*child_id).unwrap();
+                found_next = true;
+            }
+        }
+
+        // If this node doesn't have children but has a sibling following it, move to that sibling.
+        // Otherwise, if this node has a parent, move to the parent to check for uncles.
+        // Loop until either an uncle (grand-uncle, grand-grand-uncle, etc.) is found or there are no more parents.
+        while !found_next {
+            if let Some(sib_id) = self.cur_node.next_sibling {
+                self.cur_node = self.tree.get_node(sib_id).unwrap();
+                found_next = true;
+                break;
+            }
+            if let Some(parent_id) = self.cur_node.parent {
+                self.cur_node = self.tree.get_node(parent_id).unwrap();
+                if parent_id == self.head {
+                    self.finished = true;
+                    found_next = true;
+                }
+            } else {
+                break;
+            }
+        }
+
+        if found_next {
+            Some(ret_id)
+        } else {
+            self.finished = true;
+            None
+        }
     }
 }
 
