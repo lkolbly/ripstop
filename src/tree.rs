@@ -339,68 +339,16 @@ impl<'a, T> Iterator for TreeIterator<'a, T> {
 
 impl<T: std::fmt::Debug> fmt::Display for Tree<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // Get the root node's ID.
-        let root = self.find_head();
-
-        // Check that this tree has a root.
-        if let Some(root_id) = root {
-            // Get the actual root node from it's ID.
-            let root_node = self.get_node(root_id).unwrap();
-
-            // Keep track of the current node and its depth while traversing the tree.
-            let mut cur_node = root_node;
-            let mut indent_level = 0;
-
-            // This is the equivalent of a do-while loop, with the work being done before checking the condition.
-            while {
-                // Write the current node's data, indented with 2 * indent_level spaces.
-                f.write_fmt(format_args!(
-                    "{}{:?} \n",
-                    "  ".repeat(indent_level),
-                    cur_node.data
-                ))?;
-
-                // Keep track of whether we've found another node in the tree
-                let mut found_next = false;
-
-                // If this node has children, move to the first of those children. Children have one greater depth than their parent
-                if let Some(children) = &cur_node.children {
-                    let child = children.get(0);
-                    if let Some(child_id) = child {
-                        cur_node = self.get_node(*child_id).unwrap();
-                        indent_level += 1;
-                        found_next = true;
-                    }
-                }
-
-                // If this node doesn't have children but has a sibling following it, move to that sibling.
-                // Otherwise, if this node has a parent, move to the parent to check for uncles.
-                // Loop until either an uncle (grand-uncle, grand-grand-uncle, etc.) is found or there are no more parents.
-                // Uncles have one less depth for each movement up the tree (i.e. each time we move to the parent).
-                while !found_next {
-                    if let Some(sib_id) = cur_node.next_sibling {
-                        cur_node = self.get_node(sib_id).unwrap();
-                        found_next = true;
-                        break;
-                    }
-                    if let Some(parent_id) = cur_node.parent {
-                        cur_node = self.get_node(parent_id).unwrap();
-                        indent_level -= 1;
-                    } else {
-                        break;
-                    }
-                }
-
-                // If a node has no children, no next sibling, and no next uncle, we are finished writing the tree and found_next will be false
-                found_next
-            } {}
-
-            // Using this just to return the formatted string
-            write!(f, "")
-        } else {
-            // If tree has no root, it's considered empty.
-            write!(f, "Empty Tree")
+        for id in self {
+            let node = self.get_node(id).unwrap();
+            f.write_fmt(format_args!(
+                "{}{:?} \n",
+                "  ".repeat(node.depth.try_into().unwrap()),
+                node.data
+            ))?;
         }
+
+        return write!(f, "");
     }
 }
 
