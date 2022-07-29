@@ -84,6 +84,7 @@ impl<T> Tree<T> {
             previous_sibling: None,
             next_sibling: None,
             children: None,
+            depth: 0,
             data,
         });
         id
@@ -142,8 +143,11 @@ impl<T> Tree<T> {
             }
         }
 
+        let parent_depth: u32;
+
         let sibling_id = {
             let node = self.get_node_mut(nodeid)?;
+            parent_depth = node.depth;
 
             let children = node.children.as_mut().expect("Should never fail.");
             if !children.is_empty() {
@@ -168,6 +172,13 @@ impl<T> Tree<T> {
         let mut toappend = self.get_node_mut(toappendid)?;
         toappend.previous_sibling = sibling_id;
         toappend.parent = Some(nodeid);
+
+        let old_depth = toappend.depth;
+
+        let children_to_update: Vec<NodeId> = self.iter_subtree(toappendid).collect();
+        for c in children_to_update {
+            self.get_node_mut(c).unwrap().depth += parent_depth - old_depth + 1;
+        }
 
         Ok(())
     }
@@ -410,6 +421,9 @@ pub struct Node<T> {
 
     /// An ordered list of this node's children.
     pub children: Option<Vec<NodeId>>,
+
+    /// The depth of this node, with `0` being the tree's root, `1` being the root's children, etc.
+    pub depth: u32,
 
     /// The non-positional data of this node. This may simply be a label or contain more information.
     ///
