@@ -146,3 +146,141 @@ pub fn parse(toparse: &str) -> Tree<ASTNode> {
         sign * int
     }
 }
+
+#[derive(Debug, PartialEq)]
+struct NumberLiteral {
+    size_bits: usize,
+    value: u128, // This is the maximum supported integer literal
+}
+
+impl NumberLiteral {
+    fn from_tree(tree: Pair<Rule>) -> Self {
+        let rule = tree.as_rule();
+        let inner = tree.into_inner();
+        let mut tree = match rule {
+            Rule::number_literal => {
+                println!("{:?}", inner);
+                inner
+            }
+            _ => {
+                panic!("Unexpected rule!");
+            }
+        };
+
+        let tree = tree.next().unwrap();
+
+        let mut num_bits = None;
+        let mut base = None;
+        let mut digits = None;
+
+        let rule = tree.as_rule();
+        let inner = tree.into_inner();
+        let tree = match rule {
+            Rule::full_number_literal => {
+                println!("{:?}", inner);
+                for pair in inner {
+                    println!("{:?}", pair);
+                    let rule = pair.as_rule();
+                    match rule {
+                        Rule::number_literal_bits => {
+                            num_bits = Some(pair.as_span());
+                        }
+                        Rule::number_literal_base => {
+                            base = Some(pair.as_span());
+                        }
+                        Rule::number_literal_value => {
+                            digits = Some(pair.as_span());
+                        }
+                        _ => {
+                            panic!("Unexpected rule!");
+                        }
+                    }
+                }
+            }
+            Rule::pos_integer => {
+                unimplemented!();
+            }
+            _ => {
+                panic!("Unexpected rule!");
+            }
+        };
+
+        println!("{:?} {:?} {:?}", num_bits, base, digits);
+
+        match (num_bits, base, digits) {
+            (Some(num_bits), Some(base), Some(digits)) => {
+                let num_bits: usize = num_bits.as_str().parse().unwrap();
+                let base = match base.as_str() {
+                    "b" => 2,
+                    "o" => 8,
+                    "d" => 10,
+                    "h" => 16,
+                    _ => {
+                        panic!("Unexpected base");
+                    }
+                };
+                let mut value: Option<u128> = Some(0);
+                for c in digits.as_str().chars() {
+                    if c == '_' {
+                        // Ignore - user-provided separater
+                        continue;
+                    }
+                    let digit_value = u8::from_str_radix(&format!("{}", c), 16).unwrap();
+                    if digit_value > base {
+                        panic!("Got invalid digit for base!");
+                    }
+                    value = value.map(|x| x.checked_mul(base as u128)).flatten().map(|x| x.checked_add(digit_value as u128)).flatten();
+                }
+
+                let value = value.unwrap();
+
+                if 128 - value.leading_zeros() > num_bits as u32 {
+                    panic!("Number was too big!");
+                }
+
+                println!("{} {} {}", num_bits, base, value);
+                Self { size_bits: num_bits, value: value }
+            }
+            _ => {
+                unimplemented!();
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_parse_integer_literal() {
+        let tests = [
+            ("5'd16", NumberLiteral { size_bits: 5, value: 16 }),
+            ("6'b10100", NumberLiteral { size_bits: 6, value: 20 }),
+            ("32'hffab", NumberLiteral { size_bits: 32, value: 0xffab }),
+            ("48'habcd_ef01_2345", NumberLiteral { size_bits: 48, value: 0xabcd_ef01_2345 }),
+            ("128'hffffffff_ffffffff_ffffffff_ffffffff", NumberLiteral { size_bits: 128, value: 0xffffffff_ffffffff_ffffffff_ffffffff }),
+            ("1'h1", NumberLiteral { size_bits: 1, value: 1 }),
+            ("1'b0", NumberLiteral { size_bits: 1, value: 0 }),
+            //("1'h2", NumberLiteral { size_bits: 1, value: 0 }), // Too big
+            //("1'h__", NumberLiteral { size_bits: 1, value: 0 }), // This should fail!
+            //("128'hffffffff_ffffffff_ffffffff_fffffffff", NumberLiteral { size_bits: 1, value: 0 }), // Too big
+            //("32'hffffffff1", NumberLiteral { size_bits: 1, value: 0 }), // Too big
+            //("32'd123a", NumberLiteral { size_bits: 1, value: 0 }), // This should fail!
+            //("32'b123", NumberLiteral { size_bits: 1, value: 0 }), // Incorrect digit for base
+            //("32'o8", NumberLiteral { size_bits: 1, value: 0 }), // Incorrect digit for base. This should fail!
+        ];
+
+        for (test_case, expected) in tests.iter() {
+            let parsed = RipstopParser::parse(Rule::number_literal, test_case)
+                .expect("Parse failed!")
+                .next()
+                .unwrap();
+
+            println!("{:?}", parsed);
+            let literal = NumberLiteral::from_tree(parsed);
+            println!("{:?}", literal);
+            assert_eq!(&literal, expected);
+        }
+    }
+}

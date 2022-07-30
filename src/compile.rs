@@ -159,7 +159,7 @@ pub fn compile_module(tree: &Tree<ASTNode>) -> Result<Tree<VNode>, CompileError>
 
         //Register chain creation for each variable
         {
-            let reg_chain = VNode::RegisterDeclare {
+            /*let reg_chain = VNode::RegisterDeclare {
                 vars: variables
                     .clone()
                     .into_iter()
@@ -168,7 +168,7 @@ pub fn compile_module(tree: &Tree<ASTNode>) -> Result<Tree<VNode>, CompileError>
                     .collect(),
             };
             let reg_chain = v_tree.new_node(reg_chain);
-            v_tree.append_to(v_head, reg_chain);
+            v_tree.append_to(v_head, reg_chain);*/
         }
 
         //User-defined logic compilation (recursive at the moment)
