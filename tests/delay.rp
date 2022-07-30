@@ -1,0 +1,3 @@
+module delay(bits<4> a) -> (bits<4> b) {
+    b[t] = a[t-3];
+}
