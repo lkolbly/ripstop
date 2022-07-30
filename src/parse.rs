@@ -262,8 +262,11 @@ mod test {
             ("128'hffffffff_ffffffff_ffffffff_ffffffff", NumberLiteral { size_bits: 128, value: 0xffffffff_ffffffff_ffffffff_ffffffff }),
             ("1'h1", NumberLiteral { size_bits: 1, value: 1 }),
             ("1'b0", NumberLiteral { size_bits: 1, value: 0 }),
+            //("129'h5", NumberLiteral { size_bits: 128, value: 0 }), // This should fail
             //("1'h2", NumberLiteral { size_bits: 1, value: 0 }), // Too big
             //("1'h__", NumberLiteral { size_bits: 1, value: 0 }), // This should fail!
+            //("1'h1_", NumberLiteral { size_bits: 1, value: 0 }), // This should fail!
+            //("1'h_1", NumberLiteral { size_bits: 1, value: 0 }), // This should fail!
             //("128'hffffffff_ffffffff_ffffffff_fffffffff", NumberLiteral { size_bits: 1, value: 0 }), // Too big
             //("32'hffffffff1", NumberLiteral { size_bits: 1, value: 0 }), // Too big
             //("32'd123a", NumberLiteral { size_bits: 1, value: 0 }), // This should fail!
