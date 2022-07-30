@@ -1,0 +1,3 @@
+module bcd_digit_add(bits<4> base, bits<4> a, bits<4> b, bit carryin) -> (bits<4> c, bit carryout) {
+    ...
+}
