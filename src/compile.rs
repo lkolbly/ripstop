@@ -72,7 +72,7 @@ fn compile_expression(tree: &Tree<ASTNode>, node: NodeId) -> Tree<VNode> {
     let mut v_tree = Tree::new();
 
     //Create a new node. This node will be the head of `v_tree`
-    let head = v_tree.new_node(match &tree[node].data.node_type {
+    let v_head = v_tree.new_node(match &tree[node].data.node_type {
         //Copied from compile_module()
         ASTNodeType::ModuleDeclaration {
             id,
@@ -101,15 +101,24 @@ fn compile_expression(tree: &Tree<ASTNode>, node: NodeId) -> Tree<VNode> {
         ASTNodeType::Subtract {} => VNode::Subtract {},
         //Hopefully the assignment refers to a clock assign, otherwise you're screwed (this will change)
         ASTNodeType::Assign {} => VNode::ClockAssign {},
-        ASTNodeType::VariableDeclaration { var_type, var_id } => VNode::RegisterDeclare {
+        ASTNodeType::VariableDeclaration {
+            var_type: _,
+            var_id,
+        } => VNode::RegisterDeclare {
             vars: vec![var_id.clone()],
         },
     });
 
-    //Append each children's v_tree to the head of `v_tree` and return `v_tree`
+    //Append each children's `v_tree`s to the head of `v_tree` and return `v_tree`
     if let Some(children) = &tree[node].children {
         for c in children {
-            let t = compile_expression(tree, node);
+            let mut t = compile_expression(tree, *c);
+            println!(
+                "Appending tree to `v_tree` at nodeId {:?}. Current `v_tree`: {:#?}\nTree to append:\n{:#?}",
+                v_head, v_tree, t
+            );
+            let n = v_tree.append_tree(v_head, &mut t).unwrap();
+            println!("Offset: {:?}", n);
         }
     }
 
@@ -157,24 +166,12 @@ pub fn compile_module(tree: &Tree<ASTNode>) -> Result<Tree<VNode>, CompileError>
             })
         };
 
-        //Register chain creation for each variable
-        {
-            /*let reg_chain = VNode::RegisterDeclare {
-                vars: variables
-                    .clone()
-                    .into_iter()
-                    // Map each variable to its name with index (var_0, var_1, etc.), using flat_map to collect all values
-                    .flat_map(|var| (0..(var.1 + 1)).map(move |i| variable_name(&var.0, i)))
-                    .collect(),
-            };
-            let reg_chain = v_tree.new_node(reg_chain);
-            v_tree.append_to(v_head, reg_chain);*/
-        }
-
         //User-defined logic compilation (recursive at the moment)
         if let Some(children) = &tree[head].children {
             for c in children {
-                todo!()
+                v_tree
+                    .append_tree(v_head, &mut compile_expression(tree, *c))
+                    .unwrap();
             }
         } else {
             println!("Module {} has no children", id);
