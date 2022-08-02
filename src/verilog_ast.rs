@@ -61,22 +61,44 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>) -> String {
     let this_node = &tree[head];
     let children = this_node.children.clone();
 
+    /// Gets the string that is the combination of all the children strings, each joined by a newline followed by a specified number of spaces
+    fn get_children_string(
+        children: Option<Vec<NodeId>>,
+        tree: &Tree<VNode>,
+        num_whitespace: usize,
+    ) -> String {
+        let whitespace = " ".repeat(num_whitespace);
+        children
+            .unwrap()
+            .iter()
+            .map(|n| verilog_ast_to_string(*n, tree))
+            .collect::<Vec<_>>()
+            .join(&format!("\n{}", whitespace))
+    }
+
     //Maybe I should make a recurse function, but not at the moment
     let s = match &this_node.data {
         VNode::ModuleDeclaration {
             id,
             in_values,
             out_values,
-        } => todo!(),
+        } => {
+            let children_string = get_children_string(children, &tree, 4);
+
+            //An vec of both the in and out values, each prefixed by `input ` or `output `
+            let all_values: Vec<String> = {
+                let in_values = in_values.into_iter().map(|v| format!("    input {v}"));
+                let out_values = out_values.into_iter().map(|v| format!("    output {v}"));
+                in_values.chain(out_values).collect()
+            };
+            let all_values_string = all_values.join(",\n");
+
+            format!("module {id} (\n{all_values_string}\n)\n{children_string}\nendmodule")
+        }
         VNode::RegisterDeclare { vars } => format!("reg {};", vars.join(", ")),
         VNode::AlwaysBegin { trigger } => {
-            let children_string = children
-                .unwrap()
-                .iter()
-                .map(|n| verilog_ast_to_string(*n, tree))
-                .collect::<Vec<_>>()
-                .join("\n");
-            format!("always @({}) begin\n{}end", trigger, children_string)
+            let children_string = get_children_string(children, &tree, 4);
+            format!("always @({}) begin\n{}\nend", trigger, children_string)
         }
         VNode::VariableReference { var_id } => format!("{var_id}"),
         VNode::AssignKeyword {} => {
