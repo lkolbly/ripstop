@@ -118,8 +118,8 @@ impl<T> Tree<T> {
             //  --But, if for example `foo` is a parent to `a` and a sibling to `b`, mutation is required
 
             //To make this easier, "dereference" `a` and `b`
-            let a = &self[a];
-            let b = &self[b];
+            // let a = &self[a];
+            // let b = &self[b];
         }
 
         todo!()
