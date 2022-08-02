@@ -2,63 +2,48 @@ use std::collections::HashMap;
 
 use crate::{
     ast::{ASTNode, ASTNodeType},
-    tree::{self, NodeId, Tree, TreeError},
+    tree::{NodeId, Tree, TreeError},
     verilog_ast::{AlwaysBeginTriggerType, VNode},
 };
 
 ///Returns a list of all variables referenced in the input AST and the highest t-value referenced for each variable. This is accomplished recursively
 fn get_referenced_variables_and_highest_t_offset(
     tree: &Tree<ASTNode>,
-    input: &tree::Node<ASTNode>,
-) -> HashMap<String, i64> {
-    //Takes a found variable reference and registers it appropriately, either adding it to the hashmap, incrementing the hashmap value, or leaving it alone
-    fn register_reference(var_id: String, t_offset: i64, hm: &mut HashMap<String, i64>) {
-        if let Some(current_t) = hm.get_mut(&var_id) {
-            *current_t = (*current_t).max(t_offset);
-        } else {
-            hm.insert(var_id, t_offset);
-        }
-    }
-    //Takes a hashmap of found variables and registers each one in the hashmap
-    fn register_references(refs: &mut HashMap<String, i64>, hm: &mut HashMap<String, i64>) {
-        for r in refs.drain() {
-            register_reference(r.0, r.1, hm);
-        }
-    }
+) -> Result<HashMap<String, i64>, CompileError> {
     let mut variables: HashMap<String, i64> = HashMap::new();
 
-    //For each of these branches, register any variable references
-    //Searching children recursively will occur *after* this match statement
-    match &input.data.node_type {
-        ASTNodeType::ModuleDeclaration {
-            id: _,
-            in_values,
-            out_values,
-        } => {
-            //Register all the variables, both the inputs and outputs
-            for v in in_values {
-                variables.insert(v.1.clone(), 0);
+    for nodeid in tree {
+        match &tree.get_node(nodeid).unwrap().data.node_type {
+            ASTNodeType::ModuleDeclaration {
+                id: _,
+                in_values,
+                out_values,
+            } => {
+                for v in in_values {
+                    variables.insert(v.1.clone(), 0);
+                }
+                for v in out_values {
+                    variables.insert(v.1.clone(), 0);
+                }
             }
-            for v in out_values {
-                variables.insert(v.1.clone(), 0);
+            ASTNodeType::VariableReference { var_id, t_offset } => {
+                if let Some(current_t) = variables.get_mut(var_id) {
+                    *current_t = (*current_t).max(*t_offset);
+                } else {
+                    return Err(CompileError::UndeclaredVariable {});
+                }
             }
+            ASTNodeType::VariableDeclaration {
+                var_type: _,
+                var_id,
+            } => {
+                variables.insert(var_id.clone(), 0);
+            }
+            _ => {}
         }
-        ASTNodeType::VariableReference { var_id, t_offset } => {
-            register_reference(var_id.clone(), *t_offset, &mut variables);
-        }
-        _ => (),
     }
 
-    //Get the hashmap for each child of `input` and register the variable references
-    if let Some(children) = &input.children {
-        for c in children {
-            //This is where the recursion comes in
-            let mut hm = get_referenced_variables_and_highest_t_offset(tree, &tree[*c]);
-            register_references(&mut hm, &mut variables);
-        }
-    }
-
-    variables
+    Ok(variables)
 }
 
 fn compile_expression(
@@ -94,6 +79,7 @@ fn compile_expression(
 pub enum CompileError {
     CouldNotFindASTHead,
     TreeError { err: TreeError },
+    UndeclaredVariable,
 }
 
 impl From<TreeError> for CompileError {
@@ -115,10 +101,11 @@ pub fn compile_module(tree: &Tree<ASTNode>) -> Result<Tree<VNode>, CompileError>
     {
         //Stores pairs of (variable ID, highest used t-offset)
         //This is needed to create the registers
-        let variables: HashMap<String, i64> =
-            get_referenced_variables_and_highest_t_offset(tree, &tree[head]);
+        let variables: HashMap<String, i64> = get_referenced_variables_and_highest_t_offset(tree)?;
 
         let mut v_tree = Tree::new();
+
+        let mut ins_and_outs: Vec<String> = Vec::new();
 
         //Create the head of the tree, a module declaration
         //rst and clk are always included as inputs in `v_tree`, but not `tree`
@@ -128,6 +115,9 @@ pub fn compile_module(tree: &Tree<ASTNode>) -> Result<Tree<VNode>, CompileError>
 
             in_values.push("rst".to_string());
             in_values.push("clk".to_string());
+
+            ins_and_outs.append(&mut in_values.clone());
+            ins_and_outs.append(&mut out_values.clone());
 
             v_tree.new_node(VNode::ModuleDeclaration {
                 id: id.clone(),
@@ -140,7 +130,11 @@ pub fn compile_module(tree: &Tree<ASTNode>) -> Result<Tree<VNode>, CompileError>
             .clone()
             .into_iter()
             // Map each variable to its name with index (var_0, var_1, etc.), using flat_map to collect all values
-            .flat_map(|var| (1..(var.1 + 1)).map(move |i| variable_name(&var.0, i)))
+            .flat_map(|var| {
+                // If a variable is an input or an output, don't include var_0
+                let first_time = if ins_and_outs.contains(&var.0) { 1 } else { 0 };
+                (first_time..(var.1 + 1)).map(move |i| variable_name(&var.0, i))
+            })
             .collect();
 
         // Create a VNode to hold things that occur at the positive clock edge (i.e. always @(posedge clk))
@@ -206,6 +200,10 @@ pub fn compile_module(tree: &Tree<ASTNode>) -> Result<Tree<VNode>, CompileError>
 
                         compile_expression(tree, rhs, &mut v_tree, assign_vnode)?;
                     }
+                    ASTNodeType::VariableDeclaration {
+                        var_type: _,
+                        var_id: _,
+                    } => {}
                     _ => unreachable!(),
                 }
             }
