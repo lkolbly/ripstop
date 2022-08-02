@@ -29,5 +29,12 @@ binary_operator = _{ addition | subtraction }
 addition = { "+" }
 subtraction = { "-" }
 
+number_literal_value_digit = ${ ASCII_DIGIT | "_" | "a" | "b" | "c" | "d" | "e" | "f" }
+number_literal_value = ${ number_literal_value_digit+ }
+number_literal_bits = { ASCII_DIGIT+ }
+number_literal_base = { "b" | "d" | "h" | "o" }
+full_number_literal = { number_literal_bits ~ "'" ~ number_literal_base ~ number_literal_value }
+number_literal = { full_number_literal | pos_integer }
+
 WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
 COMMENT = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" | "//" ~ (!"\n" ~ ANY)* }

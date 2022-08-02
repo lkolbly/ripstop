@@ -1,0 +1,3 @@
+module comb_assign(bit a) -> (bit b) {
+    b[t] = a[t];
+}
