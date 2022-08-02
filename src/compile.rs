@@ -1,10 +1,7 @@
-use std::{
-    collections::{HashMap, HashSet},
-    hash::Hash,
-};
+use std::collections::HashMap;
 
 use crate::{
-    ast::{ASTNode, ASTNodeType, Type},
+    ast::{ASTNode, ASTNodeType},
     tree::{self, NodeId, Tree, TreeError},
     verilog_ast::{AlwaysBeginTriggerType, VNode},
 };
@@ -34,7 +31,7 @@ fn get_referenced_variables_and_highest_t_offset(
     //Searching children recursively will occur *after* this match statement
     match &input.data.node_type {
         ASTNodeType::ModuleDeclaration {
-            id,
+            id: _,
             in_values,
             out_values,
         } => {
@@ -119,17 +116,15 @@ pub fn compile_module(tree: &Tree<ASTNode>) -> Result<Tree<VNode>, CompileError>
         //Stores pairs of (variable ID, highest used t-offset)
         //This is needed to create the registers
         let variables: HashMap<String, i64> =
-            get_referenced_variables_and_highest_t_offset(&tree, &tree[head]);
+            get_referenced_variables_and_highest_t_offset(tree, &tree[head]);
 
         let mut v_tree = Tree::new();
 
         //Create the head of the tree, a module declaration
         //rst and clk are always included as inputs in `v_tree`, but not `tree`
         let v_head = {
-            let mut in_values: Vec<String> =
-                in_values.into_iter().map(|pair| pair.1.clone()).collect();
-            let out_values: Vec<String> =
-                out_values.into_iter().map(|pair| pair.1.clone()).collect();
+            let mut in_values: Vec<String> = in_values.iter().map(|pair| pair.1.clone()).collect();
+            let out_values: Vec<String> = out_values.iter().map(|pair| pair.1.clone()).collect();
 
             in_values.push("rst".to_string());
             in_values.push("clk".to_string());
@@ -142,7 +137,6 @@ pub fn compile_module(tree: &Tree<ASTNode>) -> Result<Tree<VNode>, CompileError>
         };
 
         let registers: Vec<String> = variables
-            .clone()
             .into_iter()
             // Map each variable to its name with index (var_0, var_1, etc.), using flat_map to collect all values
             .flat_map(|var| (0..(var.1 + 1)).map(move |i| variable_name(&var.0, i)))
