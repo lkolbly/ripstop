@@ -120,11 +120,12 @@ pub fn compile_module(tree: &Tree<ASTNode>) -> Result<Tree<VNode>, CompileError>
 
         let mut v_tree = Tree::new();
 
+        let out_values: Vec<String> = out_values.iter().map(|pair| pair.1.clone()).collect();
+
         //Create the head of the tree, a module declaration
         //rst and clk are always included as inputs in `v_tree`, but not `tree`
         let v_head = {
             let mut in_values: Vec<String> = in_values.iter().map(|pair| pair.1.clone()).collect();
-            let out_values: Vec<String> = out_values.iter().map(|pair| pair.1.clone()).collect();
 
             in_values.push("rst".to_string());
             in_values.push("clk".to_string());
@@ -132,7 +133,7 @@ pub fn compile_module(tree: &Tree<ASTNode>) -> Result<Tree<VNode>, CompileError>
             v_tree.new_node(VNode::ModuleDeclaration {
                 id: id.clone(),
                 in_values,
-                out_values,
+                out_values: out_values.clone(),
             })
         };
 
@@ -149,6 +150,21 @@ pub fn compile_module(tree: &Tree<ASTNode>) -> Result<Tree<VNode>, CompileError>
             };
             let reg_chain = v_tree.new_node(reg_chain);
             v_tree.append_to(v_head, reg_chain)?;
+        }
+
+        // Map each output variable to its register at time index 0
+        for out in out_values {
+            let lhs = v_tree.new_node(VNode::VariableReference {
+                var_id: out.to_string(),
+            });
+            let rhs = v_tree.new_node(VNode::VariableReference {
+                var_id: variable_name(&out, 0),
+            });
+            let assign_vnode = v_tree.new_node(VNode::AssignKeyword {});
+
+            v_tree.append_to(assign_vnode, lhs)?;
+            v_tree.append_to(assign_vnode, rhs)?;
+            v_tree.append_to(head, assign_vnode)?;
         }
 
         // Create a VNode to hold things that occur at the positive clock edge (i.e. always @(posedge clk))
