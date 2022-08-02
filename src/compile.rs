@@ -155,7 +155,6 @@ pub fn compile_module(tree: &Tree<ASTNode>) -> Result<Tree<VNode>, CompileError>
         let clock_edge = v_tree.new_node(VNode::AlwaysBegin {
             trigger: AlwaysBeginTriggerType::Posedge,
         });
-        v_tree.append_to(v_head, clock_edge)?;
 
         //User-defined logic compilation (uses the compile_expression function when encountering an expression)
         if let Some(children) = &tree[head].children {
@@ -195,6 +194,11 @@ pub fn compile_module(tree: &Tree<ASTNode>) -> Result<Tree<VNode>, CompileError>
             }
         } else {
             println!("Module {} has no children", id);
+        }
+
+        // Add the @(posedge clk) block if it's non-empty
+        if v_tree.get_node(clock_edge).unwrap().children.is_some() {
+            v_tree.append_to(v_head, clock_edge)?;
         }
 
         Ok(v_tree)
