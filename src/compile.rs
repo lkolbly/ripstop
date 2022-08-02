@@ -143,7 +143,7 @@ pub fn compile_module(tree: &Tree<ASTNode>) -> Result<Tree<VNode>, CompileError>
             .collect();
 
         //Register chain creation for each variable
-        {
+        if !registers.is_empty() {
             let reg_chain = VNode::RegisterDeclare {
                 vars: registers.clone(),
             };
