@@ -64,58 +64,6 @@ fn get_referenced_variables_and_highest_t_offset(
     variables
 }
 
-//PROBLEMS:
-//1. Currently, every single assignment will become a clocked assignment, when it could be either an `assign` statement or a clocked assign
-//2. There are probably more problems I'm not thinking of
-/// Compiles the given tree (from the given node downwards) into a verilog AST. Currently accomplished recursively
-// fn compile_expression(tree: &Tree<ASTNode>, node: NodeId) -> Tree<VNode> {
-//     let mut v_tree = Tree::new();
-
-//     //Create a new node. This node will be the head of `v_tree`
-//     let head = v_tree.new_node(match &tree[node].data.node_type {
-//         //Copied from compile_module()
-//         ASTNodeType::ModuleDeclaration {
-//             id,
-//             in_values,
-//             out_values,
-//         } => {
-//             let mut in_values: Vec<String> =
-//                 in_values.into_iter().map(|pair| pair.1.clone()).collect();
-//             let out_values: Vec<String> =
-//                 out_values.into_iter().map(|pair| pair.1.clone()).collect();
-
-//             in_values.push("rst".to_string());
-//             in_values.push("clk".to_string());
-
-//             VNode::ModuleDeclaration {
-//                 id: id.clone(),
-//                 in_values,
-//                 out_values,
-//             }
-//         }
-//         ASTNodeType::VariableReference { var_id, t_offset } => VNode::VariableReference {
-//             var_id: var_id.clone(),
-//         },
-//         ASTNodeType::BitwiseInverse {} => VNode::BitwiseInverse {},
-//         ASTNodeType::Add {} => VNode::Add {},
-//         ASTNodeType::Subtract {} => VNode::Subtract {},
-//         //Hopefully the assignment refers to a clock assign, otherwise you're screwed (this will change)
-//         ASTNodeType::Assign {} => VNode::ClockAssign {},
-//         ASTNodeType::VariableDeclaration { var_type, var_id } => VNode::RegisterDeclare {
-//             vars: vec![var_id.clone()],
-//         },
-//     });
-
-//     //Append each children's v_tree to the head of `v_tree` and return `v_tree`
-//     if let Some(children) = &tree[node].children {
-//         for c in children {
-//             let t = compile_expression(tree, node);
-//         }
-//     }
-
-//     v_tree
-// }
-
 fn compile_expression(
     ast: &Tree<ASTNode>,
     node: NodeId,
