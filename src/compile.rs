@@ -10,15 +10,6 @@ use crate::{
 fn get_referenced_variables_and_highest_t_offset(
     tree: &Tree<ASTNode>,
 ) -> Result<HashMap<String, i64>, CompileError> {
-    //Takes a found variable reference and registers it appropriately, either adding it to the hashmap, incrementing the hashmap value, or leaving it alone
-    fn register_reference(var_id: String, t_offset: i64, hm: &mut HashMap<String, i64>) {
-        if let Some(current_t) = hm.get_mut(&var_id) {
-            *current_t = (*current_t).max(t_offset);
-        } else {
-            hm.insert(var_id, t_offset);
-        }
-    }
-
     let mut variables: HashMap<String, i64> = HashMap::new();
 
     for nodeid in tree {
@@ -36,7 +27,17 @@ fn get_referenced_variables_and_highest_t_offset(
                 }
             }
             ASTNodeType::VariableReference { var_id, t_offset } => {
-                register_reference(var_id.clone(), *t_offset, &mut variables);
+                if let Some(current_t) = variables.get_mut(var_id) {
+                    *current_t = (*current_t).max(*t_offset);
+                } else {
+                    return Err(CompileError::UndeclaredVariable {});
+                }
+            }
+            ASTNodeType::VariableDeclaration {
+                var_type: _,
+                var_id,
+            } => {
+                variables.insert(var_id.clone(), 0);
             }
             _ => {}
         }
@@ -78,6 +79,7 @@ fn compile_expression(
 pub enum CompileError {
     CouldNotFindASTHead,
     TreeError { err: TreeError },
+    UndeclaredVariable,
 }
 
 impl From<TreeError> for CompileError {
@@ -103,6 +105,8 @@ pub fn compile_module(tree: &Tree<ASTNode>) -> Result<Tree<VNode>, CompileError>
 
         let mut v_tree = Tree::new();
 
+        let mut ins_and_outs: Vec<String> = Vec::new();
+
         //Create the head of the tree, a module declaration
         //rst and clk are always included as inputs in `v_tree`, but not `tree`
         let v_head = {
@@ -111,6 +115,9 @@ pub fn compile_module(tree: &Tree<ASTNode>) -> Result<Tree<VNode>, CompileError>
 
             in_values.push("rst".to_string());
             in_values.push("clk".to_string());
+
+            ins_and_outs.append(&mut in_values.clone());
+            ins_and_outs.append(&mut out_values.clone());
 
             v_tree.new_node(VNode::ModuleDeclaration {
                 id: id.clone(),
@@ -123,7 +130,11 @@ pub fn compile_module(tree: &Tree<ASTNode>) -> Result<Tree<VNode>, CompileError>
             .clone()
             .into_iter()
             // Map each variable to its name with index (var_0, var_1, etc.), using flat_map to collect all values
-            .flat_map(|var| (1..(var.1 + 1)).map(move |i| variable_name(&var.0, i)))
+            .flat_map(|var| {
+                // If a variable is an input or an output, don't include var_0
+                let first_time = if ins_and_outs.contains(&var.0) { 1 } else { 0 };
+                (first_time..(var.1 + 1)).map(move |i| variable_name(&var.0, i))
+            })
             .collect();
 
         // Create a VNode to hold things that occur at the positive clock edge (i.e. always @(posedge clk))
@@ -189,6 +200,10 @@ pub fn compile_module(tree: &Tree<ASTNode>) -> Result<Tree<VNode>, CompileError>
 
                         compile_expression(tree, rhs, &mut v_tree, assign_vnode)?;
                     }
+                    ASTNodeType::VariableDeclaration {
+                        var_type: _,
+                        var_id: _,
+                    } => {}
                     _ => unreachable!(),
                 }
             }
