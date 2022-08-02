@@ -57,9 +57,16 @@ pub enum VNode {
     Subtract {},
 }
 
-pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>) -> String {
+pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: usize) -> String {
+    let next_num_whitespace = num_whitespace + 4;
+
+    let whitespace = " ".repeat(num_whitespace);
+    let next_whitespace = " ".repeat(next_num_whitespace);
+
     let this_node = &tree[head];
     let children = this_node.children.clone();
+
+    //let mut iter = tree.iter_subtree(head);
 
     /// Gets the string that is the combination of all the children strings, each joined by a newline followed by a specified number of spaces
     fn get_children_string(
@@ -71,70 +78,85 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>) -> String {
         children
             .unwrap()
             .iter()
-            .map(|n| verilog_ast_to_string(*n, tree))
+            .map(|n| verilog_ast_to_string(*n, tree, num_whitespace))
             .collect::<Vec<_>>()
-            .join(&format!("\n{}", whitespace))
+            .join(&format!("\n{}", ""))
     }
 
-    //Maybe I should make a recurse function, but not at the moment
+    /*for n in iter {
+        let this_node = &tree[head];
+        let children = this_node.children.clone();
+    }*/
+
     let s = match &this_node.data {
         VNode::ModuleDeclaration {
             id,
             in_values,
             out_values,
         } => {
-            let children_string = get_children_string(children, &tree, 4);
+            let children_string = get_children_string(children, &tree, next_num_whitespace);
 
             //An vec of both the in and out values, each prefixed by `input ` or `output `
             let all_values: Vec<String> = {
-                let in_values = in_values.into_iter().map(|v| format!("    input {v}"));
-                let out_values = out_values.into_iter().map(|v| format!("    output {v}"));
+                let in_values = in_values
+                    .into_iter()
+                    .map(|v| format!("{next_whitespace}input {v}"));
+                let out_values = out_values
+                    .into_iter()
+                    .map(|v| format!("{next_whitespace}output {v}"));
                 in_values.chain(out_values).collect()
             };
             let all_values_string = all_values.join(",\n");
 
-            format!("module {id} (\n{all_values_string}\n)\n{children_string}\nendmodule")
+            format!("module {id} (\n{all_values_string}\n);\n{children_string}\nendmodule")
         }
-        VNode::RegisterDeclare { vars } => format!("reg {};", vars.join(", ")),
+        VNode::RegisterDeclare { vars } => format!("{whitespace}reg {};", vars.join(", ")),
         VNode::AlwaysBegin { trigger } => {
-            let children_string = get_children_string(children, &tree, 4);
-            format!("always @({}) begin\n{}\nend", trigger, children_string)
+            let children_string = get_children_string(children, &tree, next_num_whitespace);
+            format!(
+                "{whitespace}always @({}) begin\n{}\n{whitespace}end",
+                trigger, children_string
+            )
         }
         VNode::VariableReference { var_id } => format!("{var_id}"),
+        //For assignments and operators (and other one-line things), the children have no need for whitespace
         VNode::AssignKeyword {} => {
             let children = children.unwrap();
             format!(
-                "assign {} = {};",
-                verilog_ast_to_string(children[0], tree),
-                verilog_ast_to_string(children[1], tree)
+                "{whitespace}assign {} = {};",
+                verilog_ast_to_string(children[0], tree, 0),
+                verilog_ast_to_string(children[1], tree, 0)
             )
         }
         VNode::ClockAssign {} => {
             let children = children.unwrap();
             format!(
-                "{} <= {};",
-                verilog_ast_to_string(children[0], tree),
-                verilog_ast_to_string(children[1], tree)
+                "{whitespace}{} <= {};",
+                verilog_ast_to_string(children[0], tree, 0),
+                verilog_ast_to_string(children[1], tree, 0)
             )
         }
         VNode::BitwiseInverse {} => {
             let children = children.unwrap();
-            format!("~({})", verilog_ast_to_string(children[0], tree),)
+            format!(
+                "{whitespace}~({})",
+                verilog_ast_to_string(children[0], tree, 0),
+            )
         }
         VNode::Add {} => {
             let children = children.unwrap();
             format!(
-                "{} + {}",
-                verilog_ast_to_string(children[0], tree),
-                verilog_ast_to_string(children[1], tree)
+                "{whitespace}{} + {}",
+                verilog_ast_to_string(children[0], tree, 0),
+                verilog_ast_to_string(children[1], tree, 0)
             )
         }
         VNode::Subtract {} => {
             let children = children.unwrap();
             format!(
-                "{} - {}",
-                verilog_ast_to_string(children[0], tree),
-                verilog_ast_to_string(children[1], tree)
+                "{whitespace}{} - {}",
+                verilog_ast_to_string(children[0], tree, 0),
+                verilog_ast_to_string(children[1], tree, 0)
             )
         }
     };
