@@ -122,23 +122,26 @@ fn compile_expression(
     vast: &mut Tree<VNode>,
     vnode: NodeId,
 ) -> Result<(), CompileError> {
-    let mut cur_node = vnode;
-    for n in ast.iter_subtree(node) {
-        match &ast.get_node(n).unwrap().data.node_type {
-            ASTNodeType::VariableReference { var_id, t_offset } => {
-                let new_vnode = vast.new_node(VNode::VariableReference {
-                    var_id: variable_name(var_id, *t_offset),
-                });
-                vast.append_to(cur_node, new_vnode);
+    let to_recurse = match &ast.get_node(node).unwrap().data.node_type {
+        ASTNodeType::VariableReference { var_id, t_offset } => {
+            Some(vast.new_node(VNode::VariableReference {
+                var_id: variable_name(var_id, *t_offset),
+            }))
+        }
+        ASTNodeType::BitwiseInverse => Some(vast.new_node(VNode::BitwiseInverse {})),
+        ASTNodeType::Add => Some(vast.new_node(VNode::Add {})),
+        _ => todo!(),
+    };
+
+    if let Some(new_vnode) = to_recurse {
+        vast.append_to(vnode, new_vnode);
+        if let Some(children) = &ast.get_node(node).unwrap().children {
+            for child in children {
+                compile_expression(ast, *child, vast, new_vnode)?;
             }
-            ASTNodeType::BitwiseInverse => {
-                let new_vnode = vast.new_node(VNode::BitwiseInverse {});
-                vast.append_to(cur_node, new_vnode);
-                cur_node = new_vnode;
-            }
-            _ => todo!(),
         }
     }
+
     Ok(())
 }
 
