@@ -19,7 +19,8 @@ assignment = { indexed_variable ~ "=" ~ expression ~ ";" }
 expression = _{ binary_operation | indexed_variable | unary_operation | parenthetical_expression }
 parenthetical_expression = _{ "(" ~ expression ~ ")" }
 
-unary_operation = { unary_operator ~ expression }
+unary_operand = _{ parenthetical_expression | indexed_variable | unary_operation }
+unary_operation = { unary_operator ~ unary_operand }
 unary_operator = { bitwise_inverse }
 bitwise_inverse = { "~" }
 
