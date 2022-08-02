@@ -8,7 +8,7 @@ use crate::{
     verilog_ast::{AlwaysBeginTriggerType, VNode},
 };
 
-///Returns a list of all variables referenced in the input AST and the highest t-value referenced for each variable. This is accomplished recursively
+///Returns a list of all variables referenced in the input AST and the highest t-value referenced for each variable. This is accomplished non-recursively by iterating over tree
 fn get_referenced_variables_and_highest_t_offset<'a>(
     tree: &Tree<ASTNode<'a>>,
 ) -> Result<HashMap<String, i64>, CompileError<'a>> {
