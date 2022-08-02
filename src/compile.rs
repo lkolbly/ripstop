@@ -67,18 +67,18 @@ fn compile_expression(
     vast: &mut Tree<VNode>,
     vnode: NodeId,
 ) -> Result<(), CompileError> {
-    let to_recurse = match &ast.get_node(node).unwrap().data.node_type {
-        ASTNodeType::VariableReference { var_id, t_offset } => {
-            Some(vast.new_node(VNode::VariableReference {
-                var_id: variable_name(var_id, *t_offset),
-            }))
-        }
-        ASTNodeType::BitwiseInverse => Some(vast.new_node(VNode::BitwiseInverse {})),
-        ASTNodeType::Add => Some(vast.new_node(VNode::Add {})),
+    let new_node_data = match &ast.get_node(node).unwrap().data.node_type {
+        ASTNodeType::VariableReference { var_id, t_offset } => Some(VNode::VariableReference {
+            var_id: variable_name(var_id, *t_offset),
+        }),
+        ASTNodeType::BitwiseInverse => Some(VNode::BitwiseInverse {}),
+        ASTNodeType::Add => Some(VNode::Add {}),
+        ASTNodeType::Subtract => Some(VNode::Subtract {}),
         _ => todo!(),
     };
 
-    if let Some(new_vnode) = to_recurse {
+    if let Some(vnode_data) = new_node_data {
+        let new_vnode = vast.new_node(vnode_data);
         vast.append_to(vnode, new_vnode)?;
         if let Some(children) = &ast.get_node(node).unwrap().children {
             for child in children {
