@@ -6,7 +6,7 @@ use std::{
 use crate::{
     ast::{ASTNode, ASTNodeType, Type},
     tree::{self, NodeId, Tree},
-    verilog_ast::VNode,
+    verilog_ast::{AlwaysBeginTriggerType, VNode},
 };
 
 ///Returns a list of all variables referenced in the input AST and the highest t-value referenced for each variable. This is accomplished recursively
@@ -68,52 +68,78 @@ fn get_referenced_variables_and_highest_t_offset(
 //1. Currently, every single assignment will become a clocked assignment, when it could be either an `assign` statement or a clocked assign
 //2. There are probably more problems I'm not thinking of
 /// Compiles the given tree (from the given node downwards) into a verilog AST. Currently accomplished recursively
-fn compile_expression(tree: &Tree<ASTNode>, node: NodeId) -> Tree<VNode> {
-    let mut v_tree = Tree::new();
+// fn compile_expression(tree: &Tree<ASTNode>, node: NodeId) -> Tree<VNode> {
+//     let mut v_tree = Tree::new();
 
-    //Create a new node. This node will be the head of `v_tree`
-    let head = v_tree.new_node(match &tree[node].data.node_type {
-        //Copied from compile_module()
-        ASTNodeType::ModuleDeclaration {
-            id,
-            in_values,
-            out_values,
-        } => {
-            let mut in_values: Vec<String> =
-                in_values.into_iter().map(|pair| pair.1.clone()).collect();
-            let out_values: Vec<String> =
-                out_values.into_iter().map(|pair| pair.1.clone()).collect();
+//     //Create a new node. This node will be the head of `v_tree`
+//     let head = v_tree.new_node(match &tree[node].data.node_type {
+//         //Copied from compile_module()
+//         ASTNodeType::ModuleDeclaration {
+//             id,
+//             in_values,
+//             out_values,
+//         } => {
+//             let mut in_values: Vec<String> =
+//                 in_values.into_iter().map(|pair| pair.1.clone()).collect();
+//             let out_values: Vec<String> =
+//                 out_values.into_iter().map(|pair| pair.1.clone()).collect();
 
-            in_values.push("rst".to_string());
-            in_values.push("clk".to_string());
+//             in_values.push("rst".to_string());
+//             in_values.push("clk".to_string());
 
-            VNode::ModuleDeclaration {
-                id: id.clone(),
-                in_values,
-                out_values,
+//             VNode::ModuleDeclaration {
+//                 id: id.clone(),
+//                 in_values,
+//                 out_values,
+//             }
+//         }
+//         ASTNodeType::VariableReference { var_id, t_offset } => VNode::VariableReference {
+//             var_id: var_id.clone(),
+//         },
+//         ASTNodeType::BitwiseInverse {} => VNode::BitwiseInverse {},
+//         ASTNodeType::Add {} => VNode::Add {},
+//         ASTNodeType::Subtract {} => VNode::Subtract {},
+//         //Hopefully the assignment refers to a clock assign, otherwise you're screwed (this will change)
+//         ASTNodeType::Assign {} => VNode::ClockAssign {},
+//         ASTNodeType::VariableDeclaration { var_type, var_id } => VNode::RegisterDeclare {
+//             vars: vec![var_id.clone()],
+//         },
+//     });
+
+//     //Append each children's v_tree to the head of `v_tree` and return `v_tree`
+//     if let Some(children) = &tree[node].children {
+//         for c in children {
+//             let t = compile_expression(tree, node);
+//         }
+//     }
+
+//     v_tree
+// }
+
+fn compile_expression(
+    ast: &Tree<ASTNode>,
+    node: NodeId,
+    vast: &mut Tree<VNode>,
+    vnode: NodeId,
+) -> Result<(), CompileError> {
+    let mut cur_node = vnode;
+    for n in ast.iter_subtree(node) {
+        match &ast.get_node(n).unwrap().data.node_type {
+            ASTNodeType::VariableReference { var_id, t_offset } => {
+                let new_vnode = vast.new_node(VNode::VariableReference {
+                    var_id: variable_name(var_id, *t_offset),
+                });
+                vast.append_to(cur_node, new_vnode);
             }
-        }
-        ASTNodeType::VariableReference { var_id, t_offset } => VNode::VariableReference {
-            var_id: var_id.clone(),
-        },
-        ASTNodeType::BitwiseInverse {} => VNode::BitwiseInverse {},
-        ASTNodeType::Add {} => VNode::Add {},
-        ASTNodeType::Subtract {} => VNode::Subtract {},
-        //Hopefully the assignment refers to a clock assign, otherwise you're screwed (this will change)
-        ASTNodeType::Assign {} => VNode::ClockAssign {},
-        ASTNodeType::VariableDeclaration { var_type, var_id } => VNode::RegisterDeclare {
-            vars: vec![var_id.clone()],
-        },
-    });
-
-    //Append each children's v_tree to the head of `v_tree` and return `v_tree`
-    if let Some(children) = &tree[node].children {
-        for c in children {
-            let t = compile_expression(tree, node);
+            ASTNodeType::BitwiseInverse => {
+                let new_vnode = vast.new_node(VNode::BitwiseInverse {});
+                vast.append_to(cur_node, new_vnode);
+                cur_node = new_vnode;
+            }
+            _ => todo!(),
         }
     }
-
-    v_tree
+    Ok(())
 }
 
 #[derive(Debug, Clone)]
@@ -157,24 +183,63 @@ pub fn compile_module(tree: &Tree<ASTNode>) -> Result<Tree<VNode>, CompileError>
             })
         };
 
+        let registers: Vec<String> = variables
+            .clone()
+            .into_iter()
+            // Map each variable to its name with index (var_0, var_1, etc.), using flat_map to collect all values
+            .flat_map(|var| (0..(var.1 + 1)).map(move |i| variable_name(&var.0, i)))
+            .collect();
+
         //Register chain creation for each variable
         {
             let reg_chain = VNode::RegisterDeclare {
-                vars: variables
-                    .clone()
-                    .into_iter()
-                    // Map each variable to its name with index (var_0, var_1, etc.), using flat_map to collect all values
-                    .flat_map(|var| (0..(var.1 + 1)).map(move |i| variable_name(&var.0, i)))
-                    .collect(),
+                vars: registers.clone(),
             };
             let reg_chain = v_tree.new_node(reg_chain);
             v_tree.append_to(v_head, reg_chain);
         }
 
-        //User-defined logic compilation (recursive at the moment)
+        // Create a VNode to hold things that occur at the positive clock edge (i.e. always @(posedge clk))
+        let clock_edge = v_tree.new_node(VNode::AlwaysBegin {
+            trigger: AlwaysBeginTriggerType::Posedge,
+        });
+        v_tree.append_to(v_head, clock_edge);
+
+        //User-defined logic compilation (uses the compile_expression function when encountering an expression)
         if let Some(children) = &tree[head].children {
             for c in children {
-                todo!()
+                let child_node = tree.get_node(*c).unwrap();
+                match child_node.data.node_type {
+                    ASTNodeType::Assign => {
+                        let lhs = child_node.children.as_ref().unwrap()[0];
+                        let rhs = child_node.children.as_ref().unwrap()[1];
+
+                        let lhs_name = match &tree.get_node(lhs).unwrap().data.node_type {
+                            ASTNodeType::VariableReference { var_id, t_offset } => {
+                                variable_name(var_id, *t_offset)
+                            }
+                            _ => unreachable!(),
+                        };
+                        let lhs_vnode = v_tree.new_node(VNode::VariableReference {
+                            var_id: lhs_name.to_string(),
+                        });
+
+                        let assign_vnode = if registers.contains(&lhs_name) {
+                            let n = v_tree.new_node(VNode::ClockAssign {});
+                            v_tree.append_to(clock_edge, n);
+                            n
+                        } else {
+                            let n = v_tree.new_node(VNode::AssignKeyword {});
+                            v_tree.append_to(head, n);
+                            n
+                        };
+
+                        v_tree.append_to(assign_vnode, lhs_vnode);
+
+                        compile_expression(tree, rhs, &mut v_tree, assign_vnode)?;
+                    }
+                    _ => unreachable!(),
+                }
             }
         } else {
             println!("Module {} has no children", id);
@@ -184,4 +249,9 @@ pub fn compile_module(tree: &Tree<ASTNode>) -> Result<Tree<VNode>, CompileError>
     } else {
         panic!("Tried to compile module which wasn't of type Node::ModuleDeclaration");
     }
+}
+
+/// Generate a Verilog variable name for the variable `var_id` at index `index`.
+fn variable_name(var_id: &String, index: i64) -> String {
+    format!("{}_{}", var_id, index)
 }
