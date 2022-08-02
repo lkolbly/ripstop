@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     ast::{ASTNode, ASTNodeType, Type},
-    tree::{self, NodeId, Tree},
+    tree::{self, NodeId, Tree, TreeError},
     verilog_ast::{AlwaysBeginTriggerType, VNode},
 };
 
@@ -82,7 +82,7 @@ fn compile_expression(
     };
 
     if let Some(new_vnode) = to_recurse {
-        vast.append_to(vnode, new_vnode);
+        vast.append_to(vnode, new_vnode)?;
         if let Some(children) = &ast.get_node(node).unwrap().children {
             for child in children {
                 compile_expression(ast, *child, vast, new_vnode)?;
@@ -96,6 +96,13 @@ fn compile_expression(
 #[derive(Debug, Clone)]
 pub enum CompileError {
     CouldNotFindASTHead,
+    TreeError { err: TreeError },
+}
+
+impl From<TreeError> for CompileError {
+    fn from(e: TreeError) -> Self {
+        CompileError::TreeError { err: e }
+    }
 }
 
 ///Compiles a single module into Verilog from an AST
@@ -147,14 +154,14 @@ pub fn compile_module(tree: &Tree<ASTNode>) -> Result<Tree<VNode>, CompileError>
                 vars: registers.clone(),
             };
             let reg_chain = v_tree.new_node(reg_chain);
-            v_tree.append_to(v_head, reg_chain);
+            v_tree.append_to(v_head, reg_chain)?;
         }
 
         // Create a VNode to hold things that occur at the positive clock edge (i.e. always @(posedge clk))
         let clock_edge = v_tree.new_node(VNode::AlwaysBegin {
             trigger: AlwaysBeginTriggerType::Posedge,
         });
-        v_tree.append_to(v_head, clock_edge);
+        v_tree.append_to(v_head, clock_edge)?;
 
         //User-defined logic compilation (uses the compile_expression function when encountering an expression)
         if let Some(children) = &tree[head].children {
@@ -177,15 +184,15 @@ pub fn compile_module(tree: &Tree<ASTNode>) -> Result<Tree<VNode>, CompileError>
 
                         let assign_vnode = if registers.contains(&lhs_name) {
                             let n = v_tree.new_node(VNode::ClockAssign {});
-                            v_tree.append_to(clock_edge, n);
+                            v_tree.append_to(clock_edge, n)?;
                             n
                         } else {
                             let n = v_tree.new_node(VNode::AssignKeyword {});
-                            v_tree.append_to(head, n);
+                            v_tree.append_to(head, n)?;
                             n
                         };
 
-                        v_tree.append_to(assign_vnode, lhs_vnode);
+                        v_tree.append_to(assign_vnode, lhs_vnode)?;
 
                         compile_expression(tree, rhs, &mut v_tree, assign_vnode)?;
                     }
