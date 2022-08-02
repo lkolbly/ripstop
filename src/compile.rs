@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, thread::current};
 
 use crate::{
     ast::{ASTNode, ASTNodeType},
@@ -6,29 +6,51 @@ use crate::{
     verilog_ast::{AlwaysBeginTriggerType, VNode},
 };
 
+fn normalize(tree: &mut Tree<ASTNode>) -> Result<(), CompileError> {
+    let variables = get_referenced_variables_and_highest_t_offset(tree)?;
+
+    for n in tree.into_iter() {
+        match &tree[n].data {
+            _ => todo!(),
+        }
+    }
+
+    Ok(())
+}
+
 ///Returns a list of all variables referenced in the input AST and the highest t-value referenced for each variable. This is accomplished recursively
 fn get_referenced_variables_and_highest_t_offset(
     tree: &Tree<ASTNode>,
 ) -> Result<HashMap<String, i64>, CompileError> {
-    let mut variables: HashMap<String, i64> = HashMap::new();
+    //A list of all the variables and their t-offsets. If the variable has only been declared (neither referenced or assigned), then the t-offset will be `None`
+    //Reminder: a positive t-offset represents [t-n] and a negative represents [t+n]
+    let mut variables: HashMap<String, Option<i64>> = HashMap::new();
 
     for nodeid in tree {
-        match &tree.get_node(nodeid).unwrap().data.node_type {
+        match &tree[nodeid].data.node_type {
             ASTNodeType::ModuleDeclaration {
                 id: _,
                 in_values,
                 out_values,
             } => {
-                for v in in_values {
-                    variables.insert(v.1.clone(), 0);
+                for (_t, name) in in_values {
+                    variables.insert(name.clone(), None);
                 }
-                for v in out_values {
-                    variables.insert(v.1.clone(), 0);
+                for (_t, name) in out_values {
+                    variables.insert(name.clone(), None);
                 }
             }
-            ASTNodeType::VariableReference { var_id, t_offset } => {
+            ASTNodeType::VariableReference {
+                var_id,
+                t_offset: new_t,
+            } => {
                 if let Some(current_t) = variables.get_mut(var_id) {
-                    *current_t = (*current_t).max(*t_offset);
+                    //If the variable is declared, check to see if this is the highest referenced t-offset and record
+                    if let Some(t) = current_t {
+                        *t = (*t).max(*new_t);
+                    } else {
+                        let _ = current_t.insert(*new_t);
+                    }
                 } else {
                     return Err(CompileError::UndeclaredVariable {});
                 }
@@ -37,11 +59,17 @@ fn get_referenced_variables_and_highest_t_offset(
                 var_type: _,
                 var_id,
             } => {
-                variables.insert(var_id.clone(), 0);
+                variables.insert(var_id.clone(), None);
             }
             _ => {}
         }
     }
+
+    //For each variable, set its offset to 0 if never referenced
+    let variables = variables
+        .drain()
+        .map(|(name, t_offset)| (name, t_offset.unwrap_or(0)))
+        .collect();
 
     Ok(variables)
 }
@@ -150,13 +178,13 @@ pub fn compile_module(tree: &Tree<ASTNode>) -> Result<Tree<VNode>, CompileError>
             let reg_chain = v_tree.new_node(reg_chain);
             v_tree.append_to(v_head, reg_chain)?;
 
-            for var in variables.into_iter() {
-                for i in 1..(var.1 + 1) {
+            for (name, offset) in variables.into_iter() {
+                for i in 1..(offset + 1) {
                     let lhs = v_tree.new_node(VNode::VariableReference {
-                        var_id: variable_name(&var.0, i),
+                        var_id: variable_name(&name, i),
                     });
                     let rhs = v_tree.new_node(VNode::VariableReference {
-                        var_id: variable_name(&var.0, i - 1),
+                        var_id: variable_name(&name, i - 1),
                     });
                     let reg_assign = v_tree.new_node(VNode::ClockAssign {});
 
