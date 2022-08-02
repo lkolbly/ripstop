@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     ast::{ASTNode, ASTNodeType},
-    tree::{self, NodeId, Tree, TreeError},
+    tree::{NodeId, Tree, TreeError},
     verilog_ast::{AlwaysBeginTriggerType, VNode},
 };
 

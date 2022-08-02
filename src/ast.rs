@@ -1,5 +1,3 @@
-use pest::iterators::Pair;
-
 #[derive(Debug, Clone)]
 pub enum Type {
     Bit,
