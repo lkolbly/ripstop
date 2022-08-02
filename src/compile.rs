@@ -137,10 +137,16 @@ pub fn compile_module(tree: &Tree<ASTNode>) -> Result<Tree<VNode>, CompileError>
         };
 
         let registers: Vec<String> = variables
+            .clone()
             .into_iter()
             // Map each variable to its name with index (var_0, var_1, etc.), using flat_map to collect all values
             .flat_map(|var| (1..(var.1 + 1)).map(move |i| variable_name(&var.0, i)))
             .collect();
+
+        // Create a VNode to hold things that occur at the positive clock edge (i.e. always @(posedge clk))
+        let clock_edge = v_tree.new_node(VNode::AlwaysBegin {
+            trigger: AlwaysBeginTriggerType::Posedge,
+        });
 
         //Register chain creation for each variable
         if !registers.is_empty() {
@@ -149,12 +155,23 @@ pub fn compile_module(tree: &Tree<ASTNode>) -> Result<Tree<VNode>, CompileError>
             };
             let reg_chain = v_tree.new_node(reg_chain);
             v_tree.append_to(v_head, reg_chain)?;
-        }
 
-        // Create a VNode to hold things that occur at the positive clock edge (i.e. always @(posedge clk))
-        let clock_edge = v_tree.new_node(VNode::AlwaysBegin {
-            trigger: AlwaysBeginTriggerType::Posedge,
-        });
+            for var in variables.into_iter() {
+                for i in 1..(var.1 + 1) {
+                    let lhs = v_tree.new_node(VNode::VariableReference {
+                        var_id: variable_name(&var.0, i),
+                    });
+                    let rhs = v_tree.new_node(VNode::VariableReference {
+                        var_id: variable_name(&var.0, i - 1),
+                    });
+                    let reg_assign = v_tree.new_node(VNode::ClockAssign {});
+
+                    v_tree.append_to(reg_assign, lhs)?;
+                    v_tree.append_to(reg_assign, rhs)?;
+                    v_tree.append_to(clock_edge, reg_assign)?;
+                }
+            }
+        }
 
         //User-defined logic compilation (uses the compile_expression function when encountering an expression)
         if let Some(children) = &tree[head].children {
