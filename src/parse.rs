@@ -34,9 +34,9 @@ pub fn parse(toparse: &str) -> Tree<ASTNode> {
     parse_value(&mut tree, parsed);
     return tree;
 
-    fn parse_value(tree: &mut Tree<ASTNode>, pair: Pair<Rule>) -> Option<NodeId> {
+    fn parse_value<'a>(tree: &mut Tree<ASTNode<'a>>, pair: Pair<'a, Rule>) -> Option<NodeId> {
         let rule = pair.as_rule();
-        let mut inner_rules = pair.into_inner();
+        let mut inner_rules = pair.clone().into_inner();
 
         let node_type = match rule {
             Rule::module_declaration => Some(ASTNodeType::ModuleDeclaration {
@@ -75,7 +75,10 @@ pub fn parse(toparse: &str) -> Tree<ASTNode> {
         };
 
         if let Some(n_type) = node_type {
-            let data = ASTNode { node_type: n_type };
+            let data = ASTNode {
+                node_type: n_type,
+                pair: pair.clone(),
+            };
             let node = tree.new_node(data);
             for child in inner_rules {
                 if let Some(child_node) = parse_value(tree, child) {
@@ -95,7 +98,10 @@ pub fn parse(toparse: &str) -> Tree<ASTNode> {
                         Rule::subtraction => ASTNodeType::Subtract,
                         _ => unreachable!(),
                     };
-                    let data = ASTNode { node_type: n_type };
+                    let data = ASTNode {
+                        node_type: n_type,
+                        pair: op.clone(),
+                    };
                     let child = (&mut (*treerc).borrow_mut()).new_node(data);
                     (&mut (*treerc).borrow_mut())
                         .append_to(child, lhs.unwrap())
@@ -175,7 +181,7 @@ impl NumberLiteral {
 
         let rule = tree.as_rule();
         let inner = tree.into_inner();
-        let tree = match rule {
+        match rule {
             Rule::full_number_literal => {
                 println!("{:?}", inner);
                 for pair in inner {
@@ -229,7 +235,9 @@ impl NumberLiteral {
                     if digit_value > base {
                         panic!("Got invalid digit for base!");
                     }
-                    value = value.map(|x| x.checked_mul(base as u128)).flatten().map(|x| x.checked_add(digit_value as u128)).flatten();
+                    value = value
+                        .and_then(|x| x.checked_mul(base as u128))
+                        .and_then(|x| x.checked_add(digit_value as u128));
                 }
 
                 let value = value.unwrap();
@@ -239,7 +247,10 @@ impl NumberLiteral {
                 }
 
                 println!("{} {} {}", num_bits, base, value);
-                Self { size_bits: num_bits, value: value }
+                Self {
+                    size_bits: num_bits,
+                    value,
+                }
             }
             _ => {
                 unimplemented!();
@@ -255,13 +266,55 @@ mod test {
     #[test]
     fn test_parse_integer_literal() {
         let tests = [
-            ("5'd16", NumberLiteral { size_bits: 5, value: 16 }),
-            ("6'b10100", NumberLiteral { size_bits: 6, value: 20 }),
-            ("32'hffab", NumberLiteral { size_bits: 32, value: 0xffab }),
-            ("48'habcd_ef01_2345", NumberLiteral { size_bits: 48, value: 0xabcd_ef01_2345 }),
-            ("128'hffffffff_ffffffff_ffffffff_ffffffff", NumberLiteral { size_bits: 128, value: 0xffffffff_ffffffff_ffffffff_ffffffff }),
-            ("1'h1", NumberLiteral { size_bits: 1, value: 1 }),
-            ("1'b0", NumberLiteral { size_bits: 1, value: 0 }),
+            (
+                "5'd16",
+                NumberLiteral {
+                    size_bits: 5,
+                    value: 16,
+                },
+            ),
+            (
+                "6'b10100",
+                NumberLiteral {
+                    size_bits: 6,
+                    value: 20,
+                },
+            ),
+            (
+                "32'hffab",
+                NumberLiteral {
+                    size_bits: 32,
+                    value: 0xffab,
+                },
+            ),
+            (
+                "48'habcd_ef01_2345",
+                NumberLiteral {
+                    size_bits: 48,
+                    value: 0xabcd_ef01_2345,
+                },
+            ),
+            (
+                "128'hffffffff_ffffffff_ffffffff_ffffffff",
+                NumberLiteral {
+                    size_bits: 128,
+                    value: 0xffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff,
+                },
+            ),
+            (
+                "1'h1",
+                NumberLiteral {
+                    size_bits: 1,
+                    value: 1,
+                },
+            ),
+            (
+                "1'b0",
+                NumberLiteral {
+                    size_bits: 1,
+                    value: 0,
+                },
+            ),
             //("129'h5", NumberLiteral { size_bits: 128, value: 0 }), // This should fail
             //("1'h2", NumberLiteral { size_bits: 1, value: 0 }), // Too big
             //("1'h__", NumberLiteral { size_bits: 1, value: 0 }), // This should fail!

@@ -1,14 +1,18 @@
+use crate::parse::Rule;
+use pest::iterators::Pair;
+
 #[derive(Debug, Clone)]
 pub enum Type {
     Bit,
 }
 
 #[derive(Clone)]
-pub struct ASTNode {
+pub struct ASTNode<'a> {
     pub node_type: ASTNodeType,
+    pub pair: Pair<'a, Rule>,
 }
 
-impl std::fmt::Debug for ASTNode {
+impl<'a> std::fmt::Debug for ASTNode<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{:?}", self.node_type)
     }
