@@ -17,7 +17,7 @@ statement = _{ assignment | declaration_statement }
 declaration_statement = _{ variable_declaration ~ ";" }
 assignment = { indexed_variable ~ "=" ~ expression ~ ";" }
 expression = _{ binary_operation | indexed_variable | unary_operation | parenthetical_expression }
-parenthetical_expression = { "(" ~ expression ~ ")" }
+parenthetical_expression = _{ "(" ~ expression ~ ")" }
 
 unary_operation = { unary_operator ~ expression }
 unary_operator = { bitwise_inverse }
