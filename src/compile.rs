@@ -9,8 +9,7 @@ use crate::{
 ///Returns a list of all variables referenced in the input AST and the highest t-value referenced for each variable. This is accomplished recursively
 fn get_referenced_variables_and_highest_t_offset(
     tree: &Tree<ASTNode>,
-    input: &tree::Node<ASTNode>,
-) -> HashMap<String, i64> {
+) -> Result<HashMap<String, i64>, CompileError> {
     //Takes a found variable reference and registers it appropriately, either adding it to the hashmap, incrementing the hashmap value, or leaving it alone
     fn register_reference(var_id: String, t_offset: i64, hm: &mut HashMap<String, i64>) {
         if let Some(current_t) = hm.get_mut(&var_id) {
@@ -19,46 +18,31 @@ fn get_referenced_variables_and_highest_t_offset(
             hm.insert(var_id, t_offset);
         }
     }
-    //Takes a hashmap of found variables and registers each one in the hashmap
-    fn register_references(refs: &mut HashMap<String, i64>, hm: &mut HashMap<String, i64>) {
-        for r in refs.drain() {
-            register_reference(r.0, r.1, hm);
-        }
-    }
+
     let mut variables: HashMap<String, i64> = HashMap::new();
 
-    //For each of these branches, register any variable references
-    //Searching children recursively will occur *after* this match statement
-    match &input.data.node_type {
-        ASTNodeType::ModuleDeclaration {
-            id: _,
-            in_values,
-            out_values,
-        } => {
-            //Register all the variables, both the inputs and outputs
-            for v in in_values {
-                variables.insert(v.1.clone(), 0);
+    for nodeid in tree {
+        match &tree.get_node(nodeid).unwrap().data.node_type {
+            ASTNodeType::ModuleDeclaration {
+                id: _,
+                in_values,
+                out_values,
+            } => {
+                for v in in_values {
+                    variables.insert(v.1.clone(), 0);
+                }
+                for v in out_values {
+                    variables.insert(v.1.clone(), 0);
+                }
             }
-            for v in out_values {
-                variables.insert(v.1.clone(), 0);
+            ASTNodeType::VariableReference { var_id, t_offset } => {
+                register_reference(var_id.clone(), *t_offset, &mut variables);
             }
-        }
-        ASTNodeType::VariableReference { var_id, t_offset } => {
-            register_reference(var_id.clone(), *t_offset, &mut variables);
-        }
-        _ => (),
-    }
-
-    //Get the hashmap for each child of `input` and register the variable references
-    if let Some(children) = &input.children {
-        for c in children {
-            //This is where the recursion comes in
-            let mut hm = get_referenced_variables_and_highest_t_offset(tree, &tree[*c]);
-            register_references(&mut hm, &mut variables);
+            _ => {}
         }
     }
 
-    variables
+    Ok(variables)
 }
 
 fn compile_expression(
@@ -115,8 +99,7 @@ pub fn compile_module(tree: &Tree<ASTNode>) -> Result<Tree<VNode>, CompileError>
     {
         //Stores pairs of (variable ID, highest used t-offset)
         //This is needed to create the registers
-        let variables: HashMap<String, i64> =
-            get_referenced_variables_and_highest_t_offset(tree, &tree[head]);
+        let variables: HashMap<String, i64> = get_referenced_variables_and_highest_t_offset(tree)?;
 
         let mut v_tree = Tree::new();
 
