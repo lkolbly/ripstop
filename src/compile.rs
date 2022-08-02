@@ -80,7 +80,7 @@ fn compile_expression<'a>(
     Ok(())
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum CompileError<'a> {
     CouldNotFindASTHead,
     TreeError { err: TreeError },
@@ -90,6 +90,32 @@ pub enum CompileError<'a> {
 impl<'a> From<TreeError> for CompileError<'a> {
     fn from(e: TreeError) -> Self {
         CompileError::TreeError { err: e }
+    }
+}
+
+impl<'a> std::fmt::Debug for CompileError<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            CompileError::CouldNotFindASTHead => write!(f, "Could not find AST head."),
+            CompileError::TreeError { err } => write!(f, "Tree error: {:?}", err),
+            CompileError::UndeclaredVariable { pair } => {
+                let pair_str = pair.as_str();
+                let pos = match pair.clone().tokens().next().unwrap() {
+                    pest::Token::Start { rule: _, pos } => pos,
+                    _ => unreachable!(),
+                };
+                let (line, col) = pos.line_col();
+                write!(
+                    f,
+                    "Undeclared variable on line {} col {}: {}\n{}{}^",
+                    line,
+                    col,
+                    pair_str,
+                    pos.line_of(),
+                    " ".repeat(col - 1)
+                )
+            }
+        }
     }
 }
 
