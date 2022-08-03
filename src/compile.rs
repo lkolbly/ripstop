@@ -12,7 +12,7 @@ fn normalize(tree: &mut Tree<ASTNode>) -> Result<(), CompileError> {
 
     for n in tree.into_iter().collect::<Vec<NodeId>>() {
         if let ASTNodeType::VariableReference { var_id, t_offset } = &mut tree[n].data.node_type {
-            if let Some((highest_offset, lowest_offset)) = variables.get(var_id) {
+            if let Some((_highest_offset, lowest_offset)) = variables.get(var_id) {
                 *t_offset -= lowest_offset;
             } else {
                 return Err(CompileError::UndeclaredVariable {
@@ -166,7 +166,6 @@ impl std::fmt::Debug for CompileError {
 ///Compiles a single module into Verilog from an AST
 pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileError> {
     normalize(tree)?;
-    println!("{:#?}", tree);
 
     //A little bit of a workaround in order to make this work well with the ? operator
     let head = tree.find_head().ok_or(CompileError::CouldNotFindASTHead)?;
