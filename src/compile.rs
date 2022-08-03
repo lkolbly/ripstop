@@ -302,6 +302,6 @@ fn variable_name(var_id: &String, index: i64) -> String {
     if index == 0 {
         var_id.to_string()
     } else {
-        format!("{}_{}", var_id, index)
+        format!("{}_{}", var_id, index.to_string().replace('-', "neg"))
     }
 }

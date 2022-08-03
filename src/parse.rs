@@ -134,8 +134,8 @@ pub fn parse(toparse: &str) -> Tree<ASTNode> {
         let mut inner_rules = pair.into_inner();
         let sign = match inner_rules.next() {
             Some(sign_pair) => match sign_pair.as_rule() {
-                Rule::addition => -1,
-                Rule::subtraction => 1,
+                Rule::addition => 1,
+                Rule::subtraction => -1,
                 _ => unreachable!(),
             },
             None => {
