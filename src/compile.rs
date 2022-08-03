@@ -7,25 +7,33 @@ use crate::{
     verilog_ast::{AlwaysBeginTriggerType, VNode},
 };
 
-fn normalize<'a>(tree: &'a mut Tree<ASTNode>) -> Result<(), CompileError> {
-    let variables = get_referenced_variables_and_highest_t_offset(tree)?;
+fn normalize(tree: &mut Tree<ASTNode>) -> Result<(), CompileError> {
+    let variables = get_referenced_variables_with_highest_and_lowest_t_offset(tree)?;
 
-    for n in tree.into_iter() {
-        match &tree[n].data {
-            _ => todo!(),
+    for n in tree.into_iter().collect::<Vec<NodeId>>() {
+        if let ASTNodeType::VariableReference { var_id, t_offset } = &mut tree[n].data.node_type {
+            if let Some((highest_offset, lowest_offset)) = variables.get(var_id) {
+                *t_offset -= lowest_offset;
+            } else {
+                return Err(CompileError::UndeclaredVariable {
+                    context: tree[n].data.context.clone(),
+                });
+            }
         }
     }
 
     Ok(())
 }
 
-///Returns a list of all variables referenced in the input AST and the highest t-value referenced for each variable. This is accomplished recursively
-fn get_referenced_variables_and_highest_t_offset<'a>(
-    tree: &'a Tree<ASTNode>,
-) -> Result<HashMap<String, i64>, CompileError> {
+/// Returns a list of all variables referenced in the input AST and the highest *and* lowest t-values referenced for each variable. This is accomplished recursively
+///
+/// The t-offsets are returned in pairs of `(i64, i64)` corresponding to `(highest t-value, lowest t-value)`
+fn get_referenced_variables_with_highest_and_lowest_t_offset(
+    tree: &Tree<ASTNode>,
+) -> Result<HashMap<String, (i64, i64)>, CompileError> {
     //A list of all the variables and their t-offsets. If the variable has only been declared (neither referenced or assigned), then the t-offset will be `None`
     //Reminder: a positive t-offset represents [t-n] and a negative represents [t+n]
-    let mut variables: HashMap<String, Option<i64>> = HashMap::new();
+    let mut variables: HashMap<String, Option<(i64, i64)>> = HashMap::new();
 
     for nodeid in tree {
         match &tree[nodeid].data.node_type {
@@ -47,10 +55,11 @@ fn get_referenced_variables_and_highest_t_offset<'a>(
             } => {
                 if let Some(current_t) = variables.get_mut(var_id) {
                     //If the variable is declared, check to see if this is the highest referenced t-offset and record
-                    if let Some(t) = current_t {
-                        *t = (*t).max(*new_t);
+                    if let Some((high, low)) = current_t {
+                        *high = (*high).max(*new_t);
+                        *low = (*low).min(*new_t);
                     } else {
-                        let _ = current_t.insert(*new_t);
+                        let _ = current_t.insert((*new_t, *new_t));
                     }
                 } else {
                     return Err(CompileError::UndeclaredVariable {
@@ -71,10 +80,21 @@ fn get_referenced_variables_and_highest_t_offset<'a>(
     //For each variable, set its offset to 0 if never referenced
     let variables = variables
         .drain()
-        .map(|(name, t_offset)| (name, t_offset.unwrap_or(0)))
+        .map(|(name, t_offset)| (name, t_offset.unwrap_or((0, 0))))
         .collect();
 
     Ok(variables)
+}
+
+/// Takes a return value from `get_referenced_variables_with_highest_and_lowest_t_offset` but keeps only the highest value for each variable
+fn get_referenced_variables_and_highest_t_offset(
+    tree: &Tree<ASTNode>,
+) -> Result<HashMap<String, i64>, CompileError> {
+    let map = get_referenced_variables_with_highest_and_lowest_t_offset(tree)?;
+    Ok(map
+        .into_iter()
+        .map(|(name, (low, high))| (name, high))
+        .collect())
 }
 
 fn compile_expression(
@@ -140,8 +160,9 @@ impl std::fmt::Debug for CompileError {
 }
 
 ///Compiles a single module into Verilog from an AST
-pub fn compile_module<'a>(tree: &'a mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileError> {
-    // normalize(tree)?;
+pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileError> {
+    normalize(tree)?;
+    println!("{:#?}", tree);
 
     //A little bit of a workaround in order to make this work well with the ? operator
     let head = tree.find_head().ok_or(CompileError::CouldNotFindASTHead)?;
