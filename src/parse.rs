@@ -34,7 +34,7 @@ pub fn parse(toparse: &str) -> Tree<ASTNode> {
     parse_value(&mut tree, parsed);
     return tree;
 
-    fn parse_value<'a>(tree: &mut Tree<ASTNode>, pair: Pair<'a, Rule>) -> Option<NodeId> {
+    fn parse_value(tree: &mut Tree<ASTNode>, pair: Pair<'_, Rule>) -> Option<NodeId> {
         let rule = pair.as_rule();
         let mut inner_rules = pair.clone().into_inner();
 
