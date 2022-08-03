@@ -93,7 +93,7 @@ fn get_referenced_variables_and_highest_t_offset(
     let map = get_referenced_variables_with_highest_and_lowest_t_offset(tree)?;
     Ok(map
         .into_iter()
-        .map(|(name, (low, high))| (name, high))
+        .map(|(name, (high, low))| (name, high))
         .collect())
 }
 
@@ -166,6 +166,7 @@ impl std::fmt::Debug for CompileError {
 ///Compiles a single module into Verilog from an AST
 pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileError> {
     normalize(tree)?;
+    println!("{}", tree);
 
     //A little bit of a workaround in order to make this work well with the ? operator
     let head = tree.find_head().ok_or(CompileError::CouldNotFindASTHead)?;
