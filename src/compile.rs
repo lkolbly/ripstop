@@ -12,7 +12,7 @@ use crate::{
 
 //     for n in tree.into_iter().collect::<Vec<NodeId>>() {
 //         if let ASTNodeType::VariableReference { var_id, t_offset } = &mut tree[n].data.node_type {
-//             if let Some((_highest_offset, lowest_offset)) = variables.get(var_id) {
+//             if let Some((lowest_offset, _highest_offset)) = variables.get(var_id) {
 //                 *t_offset -= lowest_offset;
 //             } else {
 //                 return Err(CompileError::UndeclaredVariable {
@@ -25,9 +25,9 @@ use crate::{
 //     Ok(())
 // }
 
-/// Returns a list of all variables referenced in the input AST and the highest *and* lowest t-values referenced for each variable. This is accomplished recursively
+/// Returns a list of all variables referenced in the input AST and the lowest *and* highest t-values referenced for each variable. This is accomplished recursively
 ///
-/// The t-offsets are returned in pairs of `(i64, i64)` corresponding to `(highest t-value, lowest t-value)`
+/// The t-offsets are returned in pairs of `(i64, i64)` corresponding to `(lowest t-value, highest t-value)`
 fn get_referenced_variables_with_highest_and_lowest_t_offset(
     tree: &Tree<ASTNode>,
 ) -> Result<HashMap<String, (i64, i64)>, CompileError> {
@@ -55,7 +55,7 @@ fn get_referenced_variables_with_highest_and_lowest_t_offset(
             } => {
                 if let Some(current_t) = variables.get_mut(var_id) {
                     //If the variable is declared, check to see if this is the highest referenced t-offset and record
-                    if let Some((high, low)) = current_t {
+                    if let Some((low, high)) = current_t {
                         *high = (*high).max(*new_t);
                         *low = (*low).min(*new_t);
                     } else {
@@ -93,7 +93,7 @@ fn get_referenced_variables_and_highest_t_offset(
     let map = get_referenced_variables_with_highest_and_lowest_t_offset(tree)?;
     Ok(map
         .into_iter()
-        .map(|(name, (high, _low))| (name, high))
+        .map(|(name, (_low, high))| (name, high))
         .collect())
 }
 
