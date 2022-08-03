@@ -34,7 +34,7 @@ pub fn parse(toparse: &str) -> Tree<ASTNode> {
     parse_value(&mut tree, parsed);
     return tree;
 
-    fn parse_value<'a>(tree: &mut Tree<ASTNode<'a>>, pair: Pair<'a, Rule>) -> Option<NodeId> {
+    fn parse_value<'a>(tree: &mut Tree<ASTNode>, pair: Pair<'a, Rule>) -> Option<NodeId> {
         let rule = pair.as_rule();
         let mut inner_rules = pair.clone().into_inner();
 
@@ -75,10 +75,7 @@ pub fn parse(toparse: &str) -> Tree<ASTNode> {
         };
 
         if let Some(n_type) = node_type {
-            let data = ASTNode {
-                node_type: n_type,
-                pair: pair.clone(),
-            };
+            let data = ASTNode::new(n_type, pair);
             let node = tree.new_node(data);
             for child in inner_rules {
                 if let Some(child_node) = parse_value(tree, child) {
@@ -98,10 +95,7 @@ pub fn parse(toparse: &str) -> Tree<ASTNode> {
                         Rule::subtraction => ASTNodeType::Subtract,
                         _ => unreachable!(),
                     };
-                    let data = ASTNode {
-                        node_type: n_type,
-                        pair: op.clone(),
-                    };
+                    let data = ASTNode::new(n_type, op);
                     let child = (&mut (*treerc).borrow_mut()).new_node(data);
                     (&mut (*treerc).borrow_mut())
                         .append_to(child, lhs.unwrap())
