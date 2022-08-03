@@ -93,7 +93,7 @@ fn get_referenced_variables_and_highest_t_offset(
     let map = get_referenced_variables_with_highest_and_lowest_t_offset(tree)?;
     Ok(map
         .into_iter()
-        .map(|(name, (high, low))| (name, high))
+        .map(|(name, (high, _low))| (name, high))
         .collect())
 }
 

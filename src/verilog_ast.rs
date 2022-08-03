@@ -1,11 +1,11 @@
 use std::fmt;
 
-use crate::tree::{Node, NodeId, Tree};
+use crate::tree::{NodeId, Tree};
 
 #[derive(Debug, Clone)]
 pub enum AlwaysBeginTriggerType {
     ///*
-    OnDepencyUpdate,
+    // OnDepencyUpdate,
     ///posedge clk
     Posedge,
 }
@@ -13,7 +13,7 @@ pub enum AlwaysBeginTriggerType {
 impl fmt::Display for AlwaysBeginTriggerType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
-            AlwaysBeginTriggerType::OnDepencyUpdate => "*",
+            // AlwaysBeginTriggerType::OnDepencyUpdate => "*",
             AlwaysBeginTriggerType::Posedge => "poesdge clk",
         };
         write!(f, "{}", s)
@@ -74,7 +74,6 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
         tree: &Tree<VNode>,
         num_whitespace: usize,
     ) -> String {
-        let whitespace = " ".repeat(num_whitespace);
         children
             .unwrap()
             .iter()
@@ -94,15 +93,15 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
             in_values,
             out_values,
         } => {
-            let children_string = get_children_string(children, &tree, next_num_whitespace);
+            let children_string = get_children_string(children, tree, next_num_whitespace);
 
             //An vec of both the in and out values, each prefixed by `input ` or `output `
             let all_values: Vec<String> = {
                 let in_values = in_values
-                    .into_iter()
+                    .iter()
                     .map(|v| format!("{next_whitespace}input {v}"));
                 let out_values = out_values
-                    .into_iter()
+                    .iter()
                     .map(|v| format!("{next_whitespace}output {v}"));
                 in_values.chain(out_values).collect()
             };
@@ -112,13 +111,13 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
         }
         VNode::RegisterDeclare { vars } => format!("{whitespace}reg {};", vars.join(", ")),
         VNode::AlwaysBegin { trigger } => {
-            let children_string = get_children_string(children, &tree, next_num_whitespace);
+            let children_string = get_children_string(children, tree, next_num_whitespace);
             format!(
                 "{whitespace}always @({}) begin\n{}\n{whitespace}end",
                 trigger, children_string
             )
         }
-        VNode::VariableReference { var_id } => format!("{var_id}"),
+        VNode::VariableReference { var_id } => var_id.to_string(),
         //For assignments and operators (and other one-line things), the children have no need for whitespace
         VNode::AssignKeyword {} => {
             let children = children.unwrap();
