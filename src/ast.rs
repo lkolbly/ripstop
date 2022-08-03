@@ -6,13 +6,56 @@ pub enum Type {
     Bit,
 }
 
+/// Struct for storing the context of an AST node, such as its position within the input string and the input string representing the node.
 #[derive(Clone)]
-pub struct ASTNode<'a> {
-    pub node_type: ASTNodeType,
-    pub pair: Pair<'a, Rule>,
+pub struct StringContext {
+    /// Line number of the start of this node within the input string.
+    pub line: usize,
+
+    /// Column number of the start of this node within the input string.
+    pub col: usize,
+
+    /// The section of the input string that is the line containing the start of this node.
+    pub line_str: String,
+
+    /// The section of the input string that makes up this node.
+    pub node_str: String,
 }
 
-impl<'a> std::fmt::Debug for ASTNode<'a> {
+impl StringContext {
+    pub fn new(pair: Pair<Rule>) -> StringContext {
+        let pair_str = pair.as_str();
+        let pos = match pair.clone().tokens().next().unwrap() {
+            pest::Token::Start { rule: _, pos } => pos,
+            _ => unreachable!(),
+        };
+        let (line, col) = pos.line_col();
+
+        StringContext {
+            line,
+            col,
+            line_str: pos.line_of().to_string(),
+            node_str: pair_str.to_string(),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct ASTNode {
+    pub node_type: ASTNodeType,
+    pub context: StringContext,
+}
+
+impl ASTNode {
+    pub fn new(node_type: ASTNodeType, pair: Pair<Rule>) -> ASTNode {
+        ASTNode {
+            node_type,
+            context: StringContext::new(pair),
+        }
+    }
+}
+
+impl std::fmt::Debug for ASTNode {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{:?}", self.node_type)
     }

@@ -1,5 +1,4 @@
-use crate::parse::Rule;
-use pest::iterators::Pair;
+use crate::ast::StringContext;
 use std::collections::HashMap;
 
 use crate::{
@@ -8,7 +7,7 @@ use crate::{
     verilog_ast::{AlwaysBeginTriggerType, VNode},
 };
 
-fn normalize<'a>(tree: &'a mut Tree<ASTNode>) -> Result<(), CompileError<'a>> {
+fn normalize<'a>(tree: &'a mut Tree<ASTNode>) -> Result<(), CompileError> {
     let variables = get_referenced_variables_and_highest_t_offset(tree)?;
 
     for n in tree.into_iter() {
@@ -23,7 +22,7 @@ fn normalize<'a>(tree: &'a mut Tree<ASTNode>) -> Result<(), CompileError<'a>> {
 ///Returns a list of all variables referenced in the input AST and the highest t-value referenced for each variable. This is accomplished recursively
 fn get_referenced_variables_and_highest_t_offset<'a>(
     tree: &'a Tree<ASTNode>,
-) -> Result<HashMap<String, i64>, CompileError<'a>> {
+) -> Result<HashMap<String, i64>, CompileError> {
     //A list of all the variables and their t-offsets. If the variable has only been declared (neither referenced or assigned), then the t-offset will be `None`
     //Reminder: a positive t-offset represents [t-n] and a negative represents [t+n]
     let mut variables: HashMap<String, Option<i64>> = HashMap::new();
@@ -55,7 +54,7 @@ fn get_referenced_variables_and_highest_t_offset<'a>(
                     }
                 } else {
                     return Err(CompileError::UndeclaredVariable {
-                        pair: tree[nodeid].data.pair.clone(),
+                        context: tree[nodeid].data.context.clone(),
                     });
                 }
             }
@@ -78,12 +77,12 @@ fn get_referenced_variables_and_highest_t_offset<'a>(
     Ok(variables)
 }
 
-fn compile_expression<'a>(
+fn compile_expression(
     ast: &Tree<ASTNode>,
     node: NodeId,
     vast: &mut Tree<VNode>,
     vnode: NodeId,
-) -> Result<(), CompileError<'a>> {
+) -> Result<(), CompileError> {
     let new_node_data = match &ast.get_node(node).unwrap().data.node_type {
         ASTNodeType::VariableReference { var_id, t_offset } => Some(VNode::VariableReference {
             var_id: variable_name(var_id, *t_offset),
@@ -108,38 +107,32 @@ fn compile_expression<'a>(
 }
 
 #[derive(Clone)]
-pub enum CompileError<'a> {
+pub enum CompileError {
     CouldNotFindASTHead,
     TreeError { err: TreeError },
-    UndeclaredVariable { pair: Pair<'a, Rule> },
+    UndeclaredVariable { context: StringContext },
 }
 
-impl<'a> From<TreeError> for CompileError<'a> {
+impl From<TreeError> for CompileError {
     fn from(e: TreeError) -> Self {
         CompileError::TreeError { err: e }
     }
 }
 
-impl<'a> std::fmt::Debug for CompileError<'a> {
+impl std::fmt::Debug for CompileError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             CompileError::CouldNotFindASTHead => write!(f, "Could not find AST head."),
             CompileError::TreeError { err } => write!(f, "Tree error: {:?}", err),
-            CompileError::UndeclaredVariable { pair } => {
-                let pair_str = pair.as_str();
-                let pos = match pair.clone().tokens().next().unwrap() {
-                    pest::Token::Start { rule: _, pos } => pos,
-                    _ => unreachable!(),
-                };
-                let (line, col) = pos.line_col();
+            CompileError::UndeclaredVariable { context } => {
                 write!(
                     f,
                     "Undeclared variable on line {} col {}: {}\n{}{}^",
-                    line,
-                    col,
-                    pair_str,
-                    pos.line_of(),
-                    " ".repeat(col - 1)
+                    context.line,
+                    context.col,
+                    context.node_str,
+                    context.line_str,
+                    " ".repeat(context.col - 1)
                 )
             }
         }
@@ -147,8 +140,8 @@ impl<'a> std::fmt::Debug for CompileError<'a> {
 }
 
 ///Compiles a single module into Verilog from an AST
-pub fn compile_module<'a>(tree: &'a mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileError<'a>> {
-    normalize(tree)?;
+pub fn compile_module<'a>(tree: &'a mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileError> {
+    // normalize(tree)?;
 
     //A little bit of a workaround in order to make this work well with the ? operator
     let head = tree.find_head().ok_or(CompileError::CouldNotFindASTHead)?;
