@@ -121,19 +121,23 @@ impl From<TreeError> for CompileError {
 
 impl std::fmt::Debug for CompileError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let mut include_position = |ctx: &StringContext, msg: &str| {
+            write!(
+                f,
+                "{} on line {} col{}: {}\n{}{}^",
+                msg,
+                ctx.line,
+                ctx.col,
+                ctx.node_str,
+                ctx.line_str,
+                " ".repeat(ctx.col - 1)
+            )
+        };
         match self {
             CompileError::CouldNotFindASTHead => write!(f, "Could not find AST head."),
             CompileError::TreeError { err } => write!(f, "Tree error: {:?}", err),
             CompileError::UndeclaredVariable { context } => {
-                write!(
-                    f,
-                    "Undeclared variable on line {} col {}: {}\n{}{}^",
-                    context.line,
-                    context.col,
-                    context.node_str,
-                    context.line_str,
-                    " ".repeat(context.col - 1)
-                )
+                include_position(context, "Undeclared variable")
             }
         }
     }
