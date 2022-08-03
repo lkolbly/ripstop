@@ -7,23 +7,23 @@ use crate::{
     verilog_ast::{AlwaysBeginTriggerType, VNode},
 };
 
-fn normalize(tree: &mut Tree<ASTNode>) -> Result<(), CompileError> {
-    let variables = get_referenced_variables_with_highest_and_lowest_t_offset(tree)?;
+// fn normalize(tree: &mut Tree<ASTNode>) -> Result<(), CompileError> {
+//     let variables = get_referenced_variables_with_highest_and_lowest_t_offset(tree)?;
 
-    for n in tree.into_iter().collect::<Vec<NodeId>>() {
-        if let ASTNodeType::VariableReference { var_id, t_offset } = &mut tree[n].data.node_type {
-            if let Some((_highest_offset, lowest_offset)) = variables.get(var_id) {
-                *t_offset -= lowest_offset;
-            } else {
-                return Err(CompileError::UndeclaredVariable {
-                    context: tree[n].data.context.clone(),
-                });
-            }
-        }
-    }
+//     for n in tree.into_iter().collect::<Vec<NodeId>>() {
+//         if let ASTNodeType::VariableReference { var_id, t_offset } = &mut tree[n].data.node_type {
+//             if let Some((_highest_offset, lowest_offset)) = variables.get(var_id) {
+//                 *t_offset -= lowest_offset;
+//             } else {
+//                 return Err(CompileError::UndeclaredVariable {
+//                     context: tree[n].data.context.clone(),
+//                 });
+//             }
+//         }
+//     }
 
-    Ok(())
-}
+//     Ok(())
+// }
 
 /// Returns a list of all variables referenced in the input AST and the highest *and* lowest t-values referenced for each variable. This is accomplished recursively
 ///
@@ -165,9 +165,6 @@ impl std::fmt::Debug for CompileError {
 
 ///Compiles a single module into Verilog from an AST
 pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileError> {
-    normalize(tree)?;
-    println!("{}", tree);
-
     //A little bit of a workaround in order to make this work well with the ? operator
     let head = tree.find_head().ok_or(CompileError::CouldNotFindASTHead)?;
 
