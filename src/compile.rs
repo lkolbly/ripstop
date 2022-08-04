@@ -174,30 +174,30 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
         out_values,
     } = &tree[head].data.node_type
     {
-        //Stores pairs of (variable ID, highest used t-offset)
+        //Stores pairs of (variable ID, (highest used t-offset, lowest used t-offset))
         //This is needed to create the registers
-        let variables: HashMap<String, i64> = get_referenced_variables_and_highest_t_offset(tree)?;
+        let variables: HashMap<String, (i64, i64)> =
+            get_referenced_variables_with_highest_and_lowest_t_offset(tree)?;
 
         let mut v_tree = Tree::new();
 
+        let mut in_values: Vec<String> = in_values.iter().map(|pair| pair.1.clone()).collect();
+        let out_values: Vec<String> = out_values.iter().map(|pair| pair.1.clone()).collect();
+
+        in_values.push("rst".to_string());
+        in_values.push("clk".to_string());
+
         let mut ins_and_outs: Vec<String> = Vec::new();
+        ins_and_outs.append(&mut in_values.clone());
+        ins_and_outs.append(&mut out_values.clone());
 
         //Create the head of the tree, a module declaration
         //rst and clk are always included as inputs in `v_tree`, but not `tree`
         let v_head = {
-            let mut in_values: Vec<String> = in_values.iter().map(|pair| pair.1.clone()).collect();
-            let out_values: Vec<String> = out_values.iter().map(|pair| pair.1.clone()).collect();
-
-            in_values.push("rst".to_string());
-            in_values.push("clk".to_string());
-
-            ins_and_outs.append(&mut in_values.clone());
-            ins_and_outs.append(&mut out_values.clone());
-
             v_tree.new_node(VNode::ModuleDeclaration {
                 id: id.clone(),
-                in_values,
-                out_values,
+                in_values: in_values.clone(),
+                out_values: out_values.clone(),
             })
         };
 
@@ -207,8 +207,7 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
             // Map each variable to its name with index (var_0, var_1, etc.), using flat_map to collect all values
             .flat_map(|var| {
                 // If a variable is an input or an output, don't include var_0
-                let first_time = if ins_and_outs.contains(&var.0) { 1 } else { 0 };
-                (first_time..(var.1 + 1)).map(move |i| variable_name(&var.0, i))
+                (var.1 .0..(var.1 .1 + 1)).map(move |i| variable_name(&var.0, i))
             })
             .collect();
 
@@ -225,13 +224,43 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
             let reg_chain = v_tree.new_node(reg_chain);
             v_tree.append_to(v_head, reg_chain)?;
 
-            for (name, offset) in variables.into_iter() {
-                for i in 1..(offset + 1) {
+            for (name, offsets) in variables.into_iter() {
+                // Assign indexed variables to their input/output counterparts
+                if ins_and_outs.contains(&name) {
+                    let assign_no_index = v_tree.new_node(VNode::VariableReference {
+                        var_id: name.to_string(),
+                    });
+                    let assign_index_0 = v_tree.new_node(VNode::VariableReference {
+                        var_id: variable_name(&name, 0),
+                    });
+                    let assign_node = v_tree.new_node(VNode::AssignKeyword {});
+
+                    if out_values.contains(&name) {
+                        // Assign index 0 to actual variable (only necessary if variable is an output):
+                        // assign out = out_0;
+                        v_tree.append_to(assign_node, assign_no_index)?;
+                        v_tree.append_to(assign_node, assign_index_0)?;
+                    } else {
+                        // The opposite is necessary for inputs:
+                        // assign in_0 = in;
+                        v_tree.append_to(assign_node, assign_index_0)?;
+                        v_tree.append_to(assign_node, assign_no_index)?;
+                    }
+
+                    v_tree.append_to(head, assign_node)?;
+                }
+
+                // Chaining:
+                // var_neg1 <= var_0;
+                // var_0 <= var_1;
+                // var_1 <= var_2;
+                // etc.
+                for i in offsets.0..offsets.1 {
                     let lhs = v_tree.new_node(VNode::VariableReference {
                         var_id: variable_name(&name, i),
                     });
                     let rhs = v_tree.new_node(VNode::VariableReference {
-                        var_id: variable_name(&name, i - 1),
+                        var_id: variable_name(&name, i + 1),
                     });
                     let reg_assign = v_tree.new_node(VNode::ClockAssign {});
 
@@ -299,9 +328,5 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
 
 /// Generate a Verilog variable name for the variable `var_id` at index `index`.
 fn variable_name(var_id: &String, index: i64) -> String {
-    if index == 0 {
-        var_id.to_string()
-    } else {
-        format!("{}_{}", var_id, index.to_string().replace('-', "neg"))
-    }
+    format!("{}_{}", var_id, index.to_string().replace('-', "neg"))
 }
