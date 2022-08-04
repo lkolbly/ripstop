@@ -25,6 +25,39 @@ use crate::{
 //     Ok(())
 // }
 
+/// Conveniently stores information about the range of time values at which a variable is referenced.
+#[derive(Debug, Clone)]
+struct VarBounds {
+    lowest_ref: i64,
+    highest_ref: i64,
+    highest_assignment: i64,
+    is_input: bool,
+    is_output: bool,
+}
+
+impl VarBounds {
+    fn new(offset: i64, is_input: bool, is_output: bool) -> VarBounds {
+        VarBounds {
+            lowest_ref: offset,
+            highest_ref: offset,
+            highest_assignment: offset,
+            is_input,
+            is_output,
+        }
+    }
+
+    /// Update `lowest_ref` and `highest_ref` with a new offset
+    fn update(&mut self, offset: i64) {
+        self.lowest_ref = self.lowest_ref.min(offset);
+        self.highest_ref = self.highest_ref.max(offset);
+    }
+
+    /// Update `highest_assignment` with a new offset
+    fn update_assignment(&mut self, offset: i64) {
+        self.highest_assignment = self.highest_assignment.max(offset);
+    }
+}
+
 /// Returns a list of all variables referenced in the input AST and the lowest *and* highest t-values referenced for each variable. This is accomplished recursively
 ///
 /// Variables that are inputs or outputs will always contain 0 within the closed range \[lowest, highest\].
@@ -32,11 +65,10 @@ use crate::{
 /// The t-offsets are returned in pairs of `(i64, i64)` corresponding to `(lowest t-value, highest t-value)`
 fn get_referenced_variables_with_highest_and_lowest_t_offset(
     tree: &Tree<ASTNode>,
-    io_vars: &[String],
-) -> Result<HashMap<String, (i64, i64)>, CompileError> {
+) -> Result<HashMap<String, VarBounds>, CompileError> {
     //A list of all the variables and their t-offsets. If the variable has only been declared (neither referenced or assigned), then the t-offset will be `None`
     //Reminder: a positive t-offset represents [t-n] and a negative represents [t+n]
-    let mut variables: HashMap<String, Option<(i64, i64)>> = HashMap::new();
+    let mut variables: HashMap<String, Option<VarBounds>> = HashMap::new();
 
     for nodeid in tree {
         match &tree[nodeid].data.node_type {
@@ -45,11 +77,12 @@ fn get_referenced_variables_with_highest_and_lowest_t_offset(
                 in_values,
                 out_values,
             } => {
+                // I/O variables are guaranteed a reference at offset 0
                 for (_t, name) in in_values {
-                    variables.insert(name.clone(), None);
+                    variables.insert(name.clone(), Some(VarBounds::new(0, true, false)));
                 }
                 for (_t, name) in out_values {
-                    variables.insert(name.clone(), None);
+                    variables.insert(name.clone(), Some(VarBounds::new(0, true, false)));
                 }
             }
             ASTNodeType::VariableReference {
@@ -57,16 +90,14 @@ fn get_referenced_variables_with_highest_and_lowest_t_offset(
                 t_offset: new_t,
             } => {
                 if let Some(current_t) = variables.get_mut(var_id) {
-                    //If the variable is declared, check to see if this is the highest referenced t-offset and record
-                    if let Some((low, high)) = current_t {
-                        *high = (*high).max(*new_t);
-                        *low = (*low).min(*new_t);
+                    // Update the stored bounds with this new offset
+                    if let Some(bounds) = current_t {
+                        bounds.update(*new_t);
                     } else {
-                        let _ = current_t.insert(if io_vars.contains(var_id) {
-                            (*new_t.min(&0), *new_t.max(&0))
-                        } else {
-                            (*new_t, *new_t)
-                        });
+                        variables.insert(
+                            var_id.to_string(),
+                            Some(VarBounds::new(*new_t, false, false)),
+                        );
                     }
                 } else {
                     return Err(CompileError::UndeclaredVariable {
@@ -87,7 +118,7 @@ fn get_referenced_variables_with_highest_and_lowest_t_offset(
     //For each variable, set its offset to 0 if never referenced
     let variables = variables
         .drain()
-        .map(|(name, t_offset)| (name, t_offset.unwrap_or((0, 0))))
+        .map(|(name, t_offset)| (name, t_offset.unwrap()))
         .collect();
 
     Ok(variables)
@@ -182,8 +213,8 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
 
         //Stores pairs of (variable ID, (highest used t-offset, lowest used t-offset))
         //This is needed to create the registers
-        let variables: HashMap<String, (i64, i64)> =
-            get_referenced_variables_with_highest_and_lowest_t_offset(tree, &ins_and_outs)?;
+        let variables: HashMap<String, VarBounds> =
+            get_referenced_variables_with_highest_and_lowest_t_offset(tree)?;
 
         let mut v_tree = Tree::new();
 
@@ -202,8 +233,7 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
             .into_iter()
             // Map each variable to its name with index (var_0, var_1, etc.), using flat_map to collect all values
             .flat_map(|var| {
-                // If a variable is an input or an output, don't include var_0
-                (var.1 .0..(var.1 .1 + 1)).map(move |i| variable_name(&var.0, i))
+                (var.1.lowest_ref..(var.1.highest_ref + 1)).map(move |i| variable_name(&var.0, i))
             })
             .collect();
 
@@ -249,7 +279,7 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
                 // var_0 <= var_1;
                 // var_1 <= var_2;
                 // etc.
-                for i in offsets.0..offsets.1 {
+                for i in offsets.lowest_ref..offsets.highest_ref {
                     let lhs = v_tree.new_node(VNode::VariableReference {
                         var_id: variable_name(&name, i),
                     });
