@@ -158,6 +158,8 @@ pub enum CompileError {
     CouldNotFindASTHead,
     TreeError { err: TreeError },
     UndeclaredVariable { context: StringContext },
+    ReferenceAfterAssignment { context: StringContext },
+    AssignmentInPast { context: StringContext },
 }
 
 impl From<TreeError> for CompileError {
@@ -171,7 +173,7 @@ impl std::fmt::Debug for CompileError {
         let mut include_position = |ctx: &StringContext, msg: &str| {
             write!(
                 f,
-                "{} on line {} col{}: {}\n{}{}^",
+                "{} on line {} col {}: {}\n{}{}^",
                 msg,
                 ctx.line,
                 ctx.col,
@@ -185,6 +187,12 @@ impl std::fmt::Debug for CompileError {
             CompileError::TreeError { err } => write!(f, "Tree error: {:?}", err),
             CompileError::UndeclaredVariable { context } => {
                 include_position(context, "Undeclared variable")
+            }
+            CompileError::ReferenceAfterAssignment { context } => {
+                include_position(context, "Reference too late (you cannot reference a variable at a time offset greater than when it's assigned)")
+            }
+            CompileError::AssignmentInPast { context } => {
+                include_position(context, "Assignment in past (you cannot assign a variable in the past)")
             }
         }
     }
@@ -306,6 +314,11 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
 
                         let lhs_name = match &tree.get_node(lhs).unwrap().data.node_type {
                             ASTNodeType::VariableReference { var_id, t_offset } => {
+                                if t_offset < &0 {
+                                    return Err(CompileError::AssignmentInPast {
+                                        context: tree.get_node(lhs).unwrap().data.context.clone(),
+                                    });
+                                }
                                 variable_name(var_id, *t_offset)
                             }
                             _ => unreachable!(),
