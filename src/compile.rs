@@ -32,7 +32,7 @@ use crate::{
 /// The t-offsets are returned in pairs of `(i64, i64)` corresponding to `(lowest t-value, highest t-value)`
 fn get_referenced_variables_with_highest_and_lowest_t_offset(
     tree: &Tree<ASTNode>,
-    io_vars: &Vec<String>,
+    io_vars: &[String],
 ) -> Result<HashMap<String, (i64, i64)>, CompileError> {
     //A list of all the variables and their t-offsets. If the variable has only been declared (neither referenced or assigned), then the t-offset will be `None`
     //Reminder: a positive t-offset represents [t-n] and a negative represents [t+n]
