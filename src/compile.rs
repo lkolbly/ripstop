@@ -70,6 +70,34 @@ fn get_referenced_variables_with_highest_and_lowest_t_offset(
     //Reminder: a positive t-offset represents [t-n] and a negative represents [t+n]
     let mut variables: HashMap<String, Option<VarBounds>> = HashMap::new();
 
+    let insert = |var_id: String,
+                  nodeid: NodeId,
+                  offset: i64,
+                  is_assignment: bool,
+                  variables: &mut HashMap<String, Option<VarBounds>>|
+     -> Result<_, CompileError> {
+        if let Some(current_t) = variables.get_mut(&var_id) {
+            // Update the stored bounds with this new offset
+            if let Some(bounds) = current_t {
+                bounds.update(offset);
+                if is_assignment {
+                    bounds.update_assignment(offset);
+                }
+            } else {
+                let mut new = VarBounds::new(offset, false, false);
+                if is_assignment {
+                    new.update_assignment(offset)
+                }
+                variables.insert(var_id.to_string(), Some(new));
+            }
+            Ok(())
+        } else {
+            Err(CompileError::UndeclaredVariable {
+                context: tree[nodeid].data.context.clone(),
+            })
+        }
+    };
+
     for nodeid in tree {
         match &tree[nodeid].data.node_type {
             ASTNodeType::ModuleDeclaration {
@@ -88,28 +116,20 @@ fn get_referenced_variables_with_highest_and_lowest_t_offset(
             ASTNodeType::VariableReference {
                 var_id,
                 t_offset: new_t,
-            } => {
-                if let Some(current_t) = variables.get_mut(var_id) {
-                    // Update the stored bounds with this new offset
-                    if let Some(bounds) = current_t {
-                        bounds.update(*new_t);
-                    } else {
-                        variables.insert(
-                            var_id.to_string(),
-                            Some(VarBounds::new(*new_t, false, false)),
-                        );
-                    }
-                } else {
-                    return Err(CompileError::UndeclaredVariable {
-                        context: tree[nodeid].data.context.clone(),
-                    });
-                }
-            }
+            } => insert(var_id.to_string(), nodeid, *new_t, false, &mut variables)?,
             ASTNodeType::VariableDeclaration {
                 var_type: _,
                 var_id,
             } => {
                 variables.insert(var_id.clone(), None);
+            }
+            ASTNodeType::Assign => {
+                let lhs = tree.get_node(nodeid).unwrap().children.as_ref().unwrap()[0];
+                if let ASTNodeType::VariableReference { var_id, t_offset } =
+                    &tree.get_node(lhs).unwrap().data.node_type
+                {
+                    insert(var_id.to_string(), nodeid, *t_offset, true, &mut variables)?;
+                }
             }
             _ => {}
         }
@@ -129,11 +149,20 @@ fn compile_expression(
     node: NodeId,
     vast: &mut Tree<VNode>,
     vnode: NodeId,
+    variables: &HashMap<String, VarBounds>,
 ) -> Result<(), CompileError> {
     let new_node_data = match &ast.get_node(node).unwrap().data.node_type {
-        ASTNodeType::VariableReference { var_id, t_offset } => Some(VNode::VariableReference {
-            var_id: variable_name(var_id, *t_offset),
-        }),
+        ASTNodeType::VariableReference { var_id, t_offset } => {
+            let bounds = variables.get(var_id).unwrap();
+            if t_offset > &bounds.highest_assignment {
+                return Err(CompileError::ReferenceAfterAssignment {
+                    context: ast.get_node(node).unwrap().data.context.clone(),
+                });
+            }
+            Some(VNode::VariableReference {
+                var_id: variable_name(var_id, *t_offset),
+            })
+        }
         ASTNodeType::BitwiseInverse => Some(VNode::BitwiseInverse {}),
         ASTNodeType::Add => Some(VNode::Add {}),
         ASTNodeType::Subtract => Some(VNode::Subtract {}),
@@ -145,7 +174,7 @@ fn compile_expression(
         vast.append_to(vnode, new_vnode)?;
         if let Some(children) = &ast.get_node(node).unwrap().children {
             for child in children {
-                compile_expression(ast, *child, vast, new_vnode)?;
+                compile_expression(ast, *child, vast, new_vnode, variables)?;
             }
         }
     }
@@ -256,7 +285,7 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
             let reg_chain = v_tree.new_node(reg_chain);
             v_tree.append_to(v_head, reg_chain)?;
 
-            for (name, offsets) in variables.into_iter() {
+            for (name, offsets) in variables.clone().into_iter() {
                 // Assign indexed variables to their input/output counterparts
                 if ins_and_outs.contains(&name) {
                     let assign_no_index = v_tree.new_node(VNode::VariableReference {
@@ -333,7 +362,7 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
 
                         v_tree.append_to(assign_vnode, lhs_vnode)?;
 
-                        compile_expression(tree, rhs, &mut v_tree, assign_vnode)?;
+                        compile_expression(tree, rhs, &mut v_tree, assign_vnode, &variables)?;
                     }
                     ASTNodeType::VariableDeclaration {
                         var_type: _,
