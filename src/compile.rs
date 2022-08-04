@@ -61,13 +61,12 @@ fn get_referenced_variables_with_highest_and_lowest_t_offset(
                     if let Some((low, high)) = current_t {
                         *high = (*high).max(*new_t);
                         *low = (*low).min(*new_t);
-
-                        if io_vars.contains(var_id) {
-                            *high = (*high).max(0);
-                            *low = (*low).min(0);
-                        }
                     } else {
-                        let _ = current_t.insert((*new_t, *new_t));
+                        let _ = current_t.insert(if io_vars.contains(var_id) {
+                            (*new_t.min(&0), *new_t.max(&0))
+                        } else {
+                            (*new_t, *new_t)
+                        });
                     }
                 } else {
                     return Err(CompileError::UndeclaredVariable {
