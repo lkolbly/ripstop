@@ -27,9 +27,12 @@ use crate::{
 
 /// Returns a list of all variables referenced in the input AST and the lowest *and* highest t-values referenced for each variable. This is accomplished recursively
 ///
+/// Variables that are inputs or outputs will always contain 0 within the closed range \[lowest, highest\].
+///
 /// The t-offsets are returned in pairs of `(i64, i64)` corresponding to `(lowest t-value, highest t-value)`
 fn get_referenced_variables_with_highest_and_lowest_t_offset(
     tree: &Tree<ASTNode>,
+    io_vars: &Vec<String>,
 ) -> Result<HashMap<String, (i64, i64)>, CompileError> {
     //A list of all the variables and their t-offsets. If the variable has only been declared (neither referenced or assigned), then the t-offset will be `None`
     //Reminder: a positive t-offset represents [t-n] and a negative represents [t+n]
@@ -58,6 +61,11 @@ fn get_referenced_variables_with_highest_and_lowest_t_offset(
                     if let Some((low, high)) = current_t {
                         *high = (*high).max(*new_t);
                         *low = (*low).min(*new_t);
+
+                        if io_vars.contains(var_id) {
+                            *high = (*high).max(0);
+                            *low = (*low).min(0);
+                        }
                     } else {
                         let _ = current_t.insert((*new_t, *new_t));
                     }
@@ -163,13 +171,6 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
         out_values,
     } = &tree[head].data.node_type
     {
-        //Stores pairs of (variable ID, (highest used t-offset, lowest used t-offset))
-        //This is needed to create the registers
-        let variables: HashMap<String, (i64, i64)> =
-            get_referenced_variables_with_highest_and_lowest_t_offset(tree)?;
-
-        let mut v_tree = Tree::new();
-
         let mut in_values: Vec<String> = in_values.iter().map(|pair| pair.1.clone()).collect();
         let out_values: Vec<String> = out_values.iter().map(|pair| pair.1.clone()).collect();
 
@@ -179,6 +180,13 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
         let mut ins_and_outs: Vec<String> = Vec::new();
         ins_and_outs.append(&mut in_values.clone());
         ins_and_outs.append(&mut out_values.clone());
+
+        //Stores pairs of (variable ID, (highest used t-offset, lowest used t-offset))
+        //This is needed to create the registers
+        let variables: HashMap<String, (i64, i64)> =
+            get_referenced_variables_with_highest_and_lowest_t_offset(tree, &ins_and_outs)?;
+
+        let mut v_tree = Tree::new();
 
         //Create the head of the tree, a module declaration
         //rst and clk are always included as inputs in `v_tree`, but not `tree`
