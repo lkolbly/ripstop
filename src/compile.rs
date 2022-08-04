@@ -86,17 +86,6 @@ fn get_referenced_variables_with_highest_and_lowest_t_offset(
     Ok(variables)
 }
 
-/// Takes a return value from `get_referenced_variables_with_highest_and_lowest_t_offset` but keeps only the highest value for each variable
-fn get_referenced_variables_and_highest_t_offset(
-    tree: &Tree<ASTNode>,
-) -> Result<HashMap<String, i64>, CompileError> {
-    let map = get_referenced_variables_with_highest_and_lowest_t_offset(tree)?;
-    Ok(map
-        .into_iter()
-        .map(|(name, (_low, high))| (name, high))
-        .collect())
-}
-
 fn compile_expression(
     ast: &Tree<ASTNode>,
     node: NodeId,
@@ -218,9 +207,7 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
 
         //Register chain creation for each variable
         if !registers.is_empty() {
-            let reg_chain = VNode::RegisterDeclare {
-                vars: registers.clone(),
-            };
+            let reg_chain = VNode::RegisterDeclare { vars: registers };
             let reg_chain = v_tree.new_node(reg_chain);
             v_tree.append_to(v_head, reg_chain)?;
 
