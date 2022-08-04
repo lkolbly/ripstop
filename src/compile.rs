@@ -62,7 +62,7 @@ impl VarBounds {
 ///
 /// Variables that are inputs or outputs will always contain 0 within the closed range \[lowest, highest\].
 ///
-/// The t-offsets are returned in pairs of `(i64, i64)` corresponding to `(lowest t-value, highest t-value)`
+/// Result is given as a hashmap mapping variable names (strings) to `VarBounds` structs.
 fn get_referenced_variables_with_highest_and_lowest_t_offset(
     tree: &Tree<ASTNode>,
 ) -> Result<HashMap<String, VarBounds>, CompileError> {
