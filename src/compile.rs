@@ -290,15 +290,9 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
                             var_id: lhs_name.to_string(),
                         });
 
-                        let assign_vnode = if registers.contains(&lhs_name) {
-                            let n = v_tree.new_node(VNode::ClockAssign {});
-                            v_tree.append_to(clock_edge, n)?;
-                            n
-                        } else {
-                            let n = v_tree.new_node(VNode::AssignKeyword {});
-                            v_tree.append_to(head, n)?;
-                            n
-                        };
+                        // For now, only use the assign keyword for assignments.
+                        let assign_vnode = v_tree.new_node(VNode::AssignKeyword {});
+                        v_tree.append_to(head, assign_vnode)?;
 
                         v_tree.append_to(assign_vnode, lhs_vnode)?;
 
