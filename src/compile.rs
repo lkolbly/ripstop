@@ -7,33 +7,96 @@ use crate::{
     verilog_ast::{AlwaysBeginTriggerType, VNode},
 };
 
-fn normalize(tree: &mut Tree<ASTNode>) -> Result<(), CompileError> {
-    let variables = get_referenced_variables_with_highest_and_lowest_t_offset(tree)?;
+// fn normalize(tree: &mut Tree<ASTNode>) -> Result<(), CompileError> {
+//     let variables = get_referenced_variables_with_highest_and_lowest_t_offset(tree)?;
 
-    for n in tree.into_iter().collect::<Vec<NodeId>>() {
-        if let ASTNodeType::VariableReference { var_id, t_offset } = &mut tree[n].data.node_type {
-            if let Some((_highest_offset, lowest_offset)) = variables.get(var_id) {
-                *t_offset -= lowest_offset;
-            } else {
-                return Err(CompileError::UndeclaredVariable {
-                    context: tree[n].data.context.clone(),
-                });
-            }
+//     for n in tree.into_iter().collect::<Vec<NodeId>>() {
+//         if let ASTNodeType::VariableReference { var_id, t_offset } = &mut tree[n].data.node_type {
+//             if let Some((lowest_offset, _highest_offset)) = variables.get(var_id) {
+//                 *t_offset -= lowest_offset;
+//             } else {
+//                 return Err(CompileError::UndeclaredVariable {
+//                     context: tree[n].data.context.clone(),
+//                 });
+//             }
+//         }
+//     }
+
+//     Ok(())
+// }
+
+/// Conveniently stores information about the range of time values at which a variable is referenced.
+#[derive(Debug, Clone)]
+struct VarBounds {
+    lowest_ref: i64,
+    highest_ref: i64,
+    highest_assignment: i64,
+    is_input: bool,
+    is_output: bool,
+}
+
+impl VarBounds {
+    fn new(offset: i64, is_input: bool, is_output: bool) -> VarBounds {
+        VarBounds {
+            lowest_ref: offset,
+            highest_ref: offset,
+            highest_assignment: offset,
+            is_input,
+            is_output,
         }
     }
 
-    Ok(())
+    /// Update `lowest_ref` and `highest_ref` with a new offset
+    fn update(&mut self, offset: i64) {
+        self.lowest_ref = self.lowest_ref.min(offset);
+        self.highest_ref = self.highest_ref.max(offset);
+    }
+
+    /// Update `highest_assignment` with a new offset
+    fn update_assignment(&mut self, offset: i64) {
+        self.highest_assignment = self.highest_assignment.max(offset);
+    }
 }
 
-/// Returns a list of all variables referenced in the input AST and the highest *and* lowest t-values referenced for each variable. This is accomplished recursively
+/// Returns a list of all variables referenced in the input AST and the lowest *and* highest t-values referenced for each variable. This is accomplished recursively
 ///
-/// The t-offsets are returned in pairs of `(i64, i64)` corresponding to `(highest t-value, lowest t-value)`
+/// Variables that are inputs or outputs will always contain 0 within the closed range \[lowest, highest\].
+///
+/// Result is given as a hashmap mapping variable names (strings) to `VarBounds` structs.
 fn get_referenced_variables_with_highest_and_lowest_t_offset(
     tree: &Tree<ASTNode>,
-) -> Result<HashMap<String, (i64, i64)>, CompileError> {
+) -> Result<HashMap<String, VarBounds>, CompileError> {
     //A list of all the variables and their t-offsets. If the variable has only been declared (neither referenced or assigned), then the t-offset will be `None`
     //Reminder: a positive t-offset represents [t-n] and a negative represents [t+n]
-    let mut variables: HashMap<String, Option<(i64, i64)>> = HashMap::new();
+    let mut variables: HashMap<String, Option<VarBounds>> = HashMap::new();
+
+    let insert = |var_id: String,
+                  nodeid: NodeId,
+                  offset: i64,
+                  is_assignment: bool,
+                  variables: &mut HashMap<String, Option<VarBounds>>|
+     -> Result<_, CompileError> {
+        if let Some(current_t) = variables.get_mut(&var_id) {
+            // Update the stored bounds with this new offset
+            if let Some(bounds) = current_t {
+                bounds.update(offset);
+                if is_assignment {
+                    bounds.update_assignment(offset);
+                }
+            } else {
+                let mut new = VarBounds::new(offset, false, false);
+                if is_assignment {
+                    new.update_assignment(offset)
+                }
+                variables.insert(var_id.to_string(), Some(new));
+            }
+            Ok(())
+        } else {
+            Err(CompileError::UndeclaredVariable {
+                context: tree[nodeid].data.context.clone(),
+            })
+        }
+    };
 
     for nodeid in tree {
         match &tree[nodeid].data.node_type {
@@ -42,36 +105,31 @@ fn get_referenced_variables_with_highest_and_lowest_t_offset(
                 in_values,
                 out_values,
             } => {
+                // I/O variables are guaranteed a reference at offset 0
                 for (_t, name) in in_values {
-                    variables.insert(name.clone(), None);
+                    variables.insert(name.clone(), Some(VarBounds::new(0, true, false)));
                 }
                 for (_t, name) in out_values {
-                    variables.insert(name.clone(), None);
+                    variables.insert(name.clone(), Some(VarBounds::new(0, true, false)));
                 }
             }
             ASTNodeType::VariableReference {
                 var_id,
                 t_offset: new_t,
-            } => {
-                if let Some(current_t) = variables.get_mut(var_id) {
-                    //If the variable is declared, check to see if this is the highest referenced t-offset and record
-                    if let Some((high, low)) = current_t {
-                        *high = (*high).max(*new_t);
-                        *low = (*low).min(*new_t);
-                    } else {
-                        let _ = current_t.insert((*new_t, *new_t));
-                    }
-                } else {
-                    return Err(CompileError::UndeclaredVariable {
-                        context: tree[nodeid].data.context.clone(),
-                    });
-                }
-            }
+            } => insert(var_id.to_string(), nodeid, *new_t, false, &mut variables)?,
             ASTNodeType::VariableDeclaration {
                 var_type: _,
                 var_id,
             } => {
                 variables.insert(var_id.clone(), None);
+            }
+            ASTNodeType::Assign => {
+                let lhs = tree.get_node(nodeid).unwrap().children.as_ref().unwrap()[0];
+                if let ASTNodeType::VariableReference { var_id, t_offset } =
+                    &tree.get_node(lhs).unwrap().data.node_type
+                {
+                    insert(var_id.to_string(), nodeid, *t_offset, true, &mut variables)?;
+                }
             }
             _ => {}
         }
@@ -80,21 +138,10 @@ fn get_referenced_variables_with_highest_and_lowest_t_offset(
     //For each variable, set its offset to 0 if never referenced
     let variables = variables
         .drain()
-        .map(|(name, t_offset)| (name, t_offset.unwrap_or((0, 0))))
+        .map(|(name, t_offset)| (name, t_offset.unwrap()))
         .collect();
 
     Ok(variables)
-}
-
-/// Takes a return value from `get_referenced_variables_with_highest_and_lowest_t_offset` but keeps only the highest value for each variable
-fn get_referenced_variables_and_highest_t_offset(
-    tree: &Tree<ASTNode>,
-) -> Result<HashMap<String, i64>, CompileError> {
-    let map = get_referenced_variables_with_highest_and_lowest_t_offset(tree)?;
-    Ok(map
-        .into_iter()
-        .map(|(name, (high, _low))| (name, high))
-        .collect())
 }
 
 fn compile_expression(
@@ -102,11 +149,20 @@ fn compile_expression(
     node: NodeId,
     vast: &mut Tree<VNode>,
     vnode: NodeId,
+    variables: &HashMap<String, VarBounds>,
 ) -> Result<(), CompileError> {
     let new_node_data = match &ast.get_node(node).unwrap().data.node_type {
-        ASTNodeType::VariableReference { var_id, t_offset } => Some(VNode::VariableReference {
-            var_id: variable_name(var_id, *t_offset),
-        }),
+        ASTNodeType::VariableReference { var_id, t_offset } => {
+            let bounds = variables.get(var_id).unwrap();
+            if t_offset > &bounds.highest_assignment {
+                return Err(CompileError::ReferenceAfterAssignment {
+                    context: ast.get_node(node).unwrap().data.context.clone(),
+                });
+            }
+            Some(VNode::VariableReference {
+                var_id: variable_name(var_id, *t_offset),
+            })
+        }
         ASTNodeType::BitwiseInverse => Some(VNode::BitwiseInverse {}),
         ASTNodeType::Add => Some(VNode::Add {}),
         ASTNodeType::Subtract => Some(VNode::Subtract {}),
@@ -118,7 +174,7 @@ fn compile_expression(
         vast.append_to(vnode, new_vnode)?;
         if let Some(children) = &ast.get_node(node).unwrap().children {
             for child in children {
-                compile_expression(ast, *child, vast, new_vnode)?;
+                compile_expression(ast, *child, vast, new_vnode, variables)?;
             }
         }
     }
@@ -131,6 +187,8 @@ pub enum CompileError {
     CouldNotFindASTHead,
     TreeError { err: TreeError },
     UndeclaredVariable { context: StringContext },
+    ReferenceAfterAssignment { context: StringContext },
+    AssignmentInPast { context: StringContext },
 }
 
 impl From<TreeError> for CompileError {
@@ -144,7 +202,7 @@ impl std::fmt::Debug for CompileError {
         let mut include_position = |ctx: &StringContext, msg: &str| {
             write!(
                 f,
-                "{} on line {} col{}: {}\n{}{}^",
+                "{} on line {} col {}: {}\n{}{}^",
                 msg,
                 ctx.line,
                 ctx.col,
@@ -159,15 +217,18 @@ impl std::fmt::Debug for CompileError {
             CompileError::UndeclaredVariable { context } => {
                 include_position(context, "Undeclared variable")
             }
+            CompileError::ReferenceAfterAssignment { context } => {
+                include_position(context, "Reference too late (you cannot reference a variable at a time offset greater than when it's assigned)")
+            }
+            CompileError::AssignmentInPast { context } => {
+                include_position(context, "Assignment in past (you cannot assign a variable in the past)")
+            }
         }
     }
 }
 
 ///Compiles a single module into Verilog from an AST
 pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileError> {
-    normalize(tree)?;
-    println!("{}", tree);
-
     //A little bit of a workaround in order to make this work well with the ? operator
     let head = tree.find_head().ok_or(CompileError::CouldNotFindASTHead)?;
 
@@ -177,30 +238,30 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
         out_values,
     } = &tree[head].data.node_type
     {
-        //Stores pairs of (variable ID, highest used t-offset)
-        //This is needed to create the registers
-        let variables: HashMap<String, i64> = get_referenced_variables_and_highest_t_offset(tree)?;
+        let mut in_values: Vec<String> = in_values.iter().map(|pair| pair.1.clone()).collect();
+        let out_values: Vec<String> = out_values.iter().map(|pair| pair.1.clone()).collect();
 
-        let mut v_tree = Tree::new();
+        in_values.push("rst".to_string());
+        in_values.push("clk".to_string());
 
         let mut ins_and_outs: Vec<String> = Vec::new();
+        ins_and_outs.append(&mut in_values.clone());
+        ins_and_outs.append(&mut out_values.clone());
+
+        //Stores pairs of (variable ID, (highest used t-offset, lowest used t-offset))
+        //This is needed to create the registers
+        let variables: HashMap<String, VarBounds> =
+            get_referenced_variables_with_highest_and_lowest_t_offset(tree)?;
+
+        let mut v_tree = Tree::new();
 
         //Create the head of the tree, a module declaration
         //rst and clk are always included as inputs in `v_tree`, but not `tree`
         let v_head = {
-            let mut in_values: Vec<String> = in_values.iter().map(|pair| pair.1.clone()).collect();
-            let out_values: Vec<String> = out_values.iter().map(|pair| pair.1.clone()).collect();
-
-            in_values.push("rst".to_string());
-            in_values.push("clk".to_string());
-
-            ins_and_outs.append(&mut in_values.clone());
-            ins_and_outs.append(&mut out_values.clone());
-
             v_tree.new_node(VNode::ModuleDeclaration {
                 id: id.clone(),
-                in_values,
-                out_values,
+                in_values: in_values.clone(),
+                out_values: out_values.clone(),
             })
         };
 
@@ -209,9 +270,7 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
             .into_iter()
             // Map each variable to its name with index (var_0, var_1, etc.), using flat_map to collect all values
             .flat_map(|var| {
-                // If a variable is an input or an output, don't include var_0
-                let first_time = if ins_and_outs.contains(&var.0) { 1 } else { 0 };
-                (first_time..(var.1 + 1)).map(move |i| variable_name(&var.0, i))
+                (var.1.lowest_ref..(var.1.highest_ref + 1)).map(move |i| variable_name(&var.0, i))
             })
             .collect();
 
@@ -222,19 +281,47 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
 
         //Register chain creation for each variable
         if !registers.is_empty() {
-            let reg_chain = VNode::RegisterDeclare {
-                vars: registers.clone(),
-            };
+            let reg_chain = VNode::RegisterDeclare { vars: registers };
             let reg_chain = v_tree.new_node(reg_chain);
             v_tree.append_to(v_head, reg_chain)?;
 
-            for (name, offset) in variables.into_iter() {
-                for i in 1..(offset + 1) {
+            for (name, offsets) in variables.clone().into_iter() {
+                // Assign indexed variables to their input/output counterparts
+                if ins_and_outs.contains(&name) {
+                    let assign_no_index = v_tree.new_node(VNode::VariableReference {
+                        var_id: name.to_string(),
+                    });
+                    let assign_index_0 = v_tree.new_node(VNode::VariableReference {
+                        var_id: variable_name(&name, 0),
+                    });
+                    let assign_node = v_tree.new_node(VNode::AssignKeyword {});
+
+                    if out_values.contains(&name) {
+                        // Assign index 0 to actual variable (only necessary if variable is an output):
+                        // assign out = out_0;
+                        v_tree.append_to(assign_node, assign_no_index)?;
+                        v_tree.append_to(assign_node, assign_index_0)?;
+                    } else {
+                        // The opposite is necessary for inputs:
+                        // assign in_0 = in;
+                        v_tree.append_to(assign_node, assign_index_0)?;
+                        v_tree.append_to(assign_node, assign_no_index)?;
+                    }
+
+                    v_tree.append_to(head, assign_node)?;
+                }
+
+                // Chaining:
+                // var_neg1 <= var_0;
+                // var_0 <= var_1;
+                // var_1 <= var_2;
+                // etc.
+                for i in offsets.lowest_ref..offsets.highest_ref {
                     let lhs = v_tree.new_node(VNode::VariableReference {
                         var_id: variable_name(&name, i),
                     });
                     let rhs = v_tree.new_node(VNode::VariableReference {
-                        var_id: variable_name(&name, i - 1),
+                        var_id: variable_name(&name, i + 1),
                     });
                     let reg_assign = v_tree.new_node(VNode::ClockAssign {});
 
@@ -256,6 +343,11 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
 
                         let lhs_name = match &tree.get_node(lhs).unwrap().data.node_type {
                             ASTNodeType::VariableReference { var_id, t_offset } => {
+                                if t_offset < &0 {
+                                    return Err(CompileError::AssignmentInPast {
+                                        context: tree.get_node(lhs).unwrap().data.context.clone(),
+                                    });
+                                }
                                 variable_name(var_id, *t_offset)
                             }
                             _ => unreachable!(),
@@ -264,19 +356,13 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
                             var_id: lhs_name.to_string(),
                         });
 
-                        let assign_vnode = if registers.contains(&lhs_name) {
-                            let n = v_tree.new_node(VNode::ClockAssign {});
-                            v_tree.append_to(clock_edge, n)?;
-                            n
-                        } else {
-                            let n = v_tree.new_node(VNode::AssignKeyword {});
-                            v_tree.append_to(head, n)?;
-                            n
-                        };
+                        // For now, only use the assign keyword for assignments.
+                        let assign_vnode = v_tree.new_node(VNode::AssignKeyword {});
+                        v_tree.append_to(head, assign_vnode)?;
 
                         v_tree.append_to(assign_vnode, lhs_vnode)?;
 
-                        compile_expression(tree, rhs, &mut v_tree, assign_vnode)?;
+                        compile_expression(tree, rhs, &mut v_tree, assign_vnode, &variables)?;
                     }
                     ASTNodeType::VariableDeclaration {
                         var_type: _,
@@ -302,9 +388,5 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
 
 /// Generate a Verilog variable name for the variable `var_id` at index `index`.
 fn variable_name(var_id: &String, index: i64) -> String {
-    if index == 0 {
-        var_id.to_string()
-    } else {
-        format!("{}_{}", var_id, index)
-    }
+    format!("{}_{}", var_id, index.to_string().replace('-', "neg"))
 }
