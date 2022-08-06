@@ -20,7 +20,7 @@ def pytest_generate_tests(metafunc):
         metafunc.parametrize("rp_output_testname", get_files(".output"))
 
     if "rp_codegen_testname" in metafunc.fixturenames:
-        metafunc.parametrize("rp_codegen_testname", get_files(".compiled.v"))
+        metafunc.parametrize("rp_codegen_testname", get_files(".expected.v"))
 
     if "rp_csvtestdata_testname" in metafunc.fixturenames:
         metafunc.parametrize("rp_csvtestdata_testname", get_files(".test.csv"))
