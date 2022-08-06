@@ -1,0 +1,38 @@
+rst,c in 4,a out 4
+1,0,x
+0,1,14 // 0 + 1 = 1, ~1 = 14 (1110)
+0,3,14 // 14 + 3 = 1 mod 16, ~1 = 0b1110 = 14
+0,14,3 // 14 + 14 = 12 mod 16, ~12 = ~0b1100 = 3
+
+//module line_ordering(bits<4> c) -> (bits<4> a) {
+//    bits<4> b;
+//    a[0] = 0;
+//
+//    a[t] = ~b[t];
+//    b[t] = a[t-1] + c[t];
+//}
+//
+//module line_ordering(
+//    input clk,
+//    input rst,
+//    input[3:0] c,
+//    output[3:0] a
+//);
+//
+//    reg[3:0] a_q;
+//    wire[3:0] a_d;
+//    assign a = a_d;
+//
+//    wire[3:0] b;
+//    assign b = a_q + c;
+//    assign a_d = ~b;
+//
+//    always @(posedge clk) begin
+//        if (rst == 1) begin
+//            a_q <= 0;
+//        end else begin
+//            a_q <= a_d;
+//        end
+//    end
+//
+//endmodule
