@@ -1,4 +1,5 @@
-module cyclical_assignment(bit a) -> (bit c) {
+module cyclical_assignment() -> (bit c) {
+    bit a;
     bit b;
 
     a[t] = b[t];
