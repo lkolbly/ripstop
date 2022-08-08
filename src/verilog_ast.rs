@@ -14,7 +14,7 @@ impl fmt::Display for AlwaysBeginTriggerType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
             // AlwaysBeginTriggerType::OnDepencyUpdate => "*",
-            AlwaysBeginTriggerType::Posedge => "poesdge clk",
+            AlwaysBeginTriggerType::Posedge => "posedge clk",
         };
         write!(f, "{}", s)
     }
