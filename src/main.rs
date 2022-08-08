@@ -17,19 +17,15 @@ use crate::verilog_ast::verilog_ast_to_string;
 fn main() {
     let a = parse(
         "module hello() -> (bit led) {
-        led[t-1] = ~led[t-2]; // Perform the bitwise NOT
-    }",
+            led[t] = ~led[t-2]; // Perform the bitwise NOT
+        }",
     );
-    println!("{:#?}\n", a);
-
-    let v_a = compile_module(&a).unwrap();
-
-    println!("Bare tree:\n\n{:#?}\n\n", v_a);
+    let v_a = compile_module(&mut a.clone()).unwrap();
 
     println!(
         "Verilog Compiled:\n\n{}",
-        verilog_ast_to_string(v_a.find_head().unwrap(), &v_a)
-    )
+        verilog_ast_to_string(v_a.find_head().unwrap(), &v_a, 0)
+    );
 
     //println!("{:#?}\n", a);
 
