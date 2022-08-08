@@ -3,7 +3,7 @@ module main();
     wire carryout;
     wire[3:0] c;
 
-    bcd_digit_add digit(
+    bcd digit(
         .base(4'd10),
         .a(4'd4),
         .b(4'd8),

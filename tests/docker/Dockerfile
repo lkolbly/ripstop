@@ -36,5 +36,6 @@ FROM debian:stretch
 # TODO: Maybe start from a python base?
 RUN apt -y update && apt install -y python3 python3-pip
 RUN pip3 install pytest
+RUN pip3 install mako
 
 COPY --from=builder /usr/local /usr/local
