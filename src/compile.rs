@@ -189,6 +189,7 @@ pub enum CompileError {
     UndeclaredVariable { context: StringContext },
     ReferenceAfterAssignment { context: StringContext },
     AssignmentInPast { context: StringContext },
+    InputAssignment { context: StringContext },
 }
 
 impl From<TreeError> for CompileError {
@@ -222,6 +223,9 @@ impl std::fmt::Debug for CompileError {
             }
             CompileError::AssignmentInPast { context } => {
                 include_position(context, "Assignment in past (you cannot assign a variable in the past)")
+            }
+            CompileError::InputAssignment { context } => {
+                include_position(context, "Assigning to an input value")
             }
         }
     }
@@ -343,6 +347,11 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
 
                         let lhs_name = match &tree.get_node(lhs).unwrap().data.node_type {
                             ASTNodeType::VariableReference { var_id, t_offset } => {
+                                if in_values.contains(var_id) {
+                                    return Err(CompileError::InputAssignment {
+                                        context: tree.get_node(lhs).unwrap().data.context.clone(),
+                                    });
+                                }
                                 if t_offset < &0 {
                                     return Err(CompileError::AssignmentInPast {
                                         context: tree.get_node(lhs).unwrap().data.context.clone(),
