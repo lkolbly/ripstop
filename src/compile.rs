@@ -235,10 +235,12 @@ fn get_var_bounds(tree: &Tree<ASTNode>) -> Result<HashMap<String, VarBounds>, Co
                     variables.insert(name.clone(), VarBounds::new(0, VarScope::Output, *t));
                 }
             }
-            ASTNodeType::VariableReference {
-                var_id,
-                t_offset: new_t,
-            } => insert(var_id, nodeid, *new_t, false, &mut variables)?,
+            ASTNodeType::VariableReference { var_id } => {
+                let t_offset = &tree.get_first_child(nodeid).unwrap().data.node_type;
+                if let ASTNodeType::TimeOffsetRelative { offset } = t_offset {
+                    insert(var_id, nodeid, *offset, false, &mut variables)?
+                }
+            }
             ASTNodeType::VariableDeclaration { var_type, var_id } => {
                 //Never referenced variables have an offset of 0 by default
                 variables.insert(
@@ -248,10 +250,13 @@ fn get_var_bounds(tree: &Tree<ASTNode>) -> Result<HashMap<String, VarBounds>, Co
             }
             ASTNodeType::Assign => {
                 let lhs = tree.get_node(nodeid).unwrap().children.as_ref().unwrap()[0];
-                if let ASTNodeType::VariableReference { var_id, t_offset } =
+                if let ASTNodeType::VariableReference { var_id } =
                     &tree.get_node(lhs).unwrap().data.node_type
                 {
-                    insert(var_id, nodeid, *t_offset, true, &mut variables)?;
+                    let t_offset = &tree.get_first_child(nodeid).unwrap().data.node_type;
+                    if let ASTNodeType::TimeOffsetRelative { offset } = t_offset {
+                        insert(var_id, nodeid, *offset, true, &mut variables)?;
+                    }
                 }
             }
             _ => {}
@@ -268,29 +273,40 @@ fn compile_expression(
     vnode: NodeId,
     variables: &HashMap<String, VarBounds>,
 ) -> Result<(), CompileError> {
-    let vnode_data = match &ast.get_node(node).unwrap().data.node_type {
-        ASTNodeType::VariableReference { var_id, t_offset } => {
+    let new_node_data = match &ast.get_node(node).unwrap().data.node_type {
+        ASTNodeType::VariableReference { var_id } => {
             let bounds = variables.get(var_id).unwrap();
-            if t_offset > &bounds.highest_assignment {
-                return Err(CompileError::ReferenceAfterAssignment {
-                    context: ast.get_node(node).unwrap().data.context.clone(),
-                });
+
+            // Get t-offset
+            let t_offset_node = ast.get_first_child(node).unwrap();
+            let t_offset = &t_offset_node.data.node_type;
+
+            // Ensure t-offset is not greater than the highest t-offset at which this variable is assigned
+            if let ASTNodeType::TimeOffsetRelative { offset } = t_offset {
+                if offset > &bounds.highest_assignment {
+                    return Err(CompileError::ReferenceAfterAssignment {
+                        context: ast.get_node(node).unwrap().data.context.clone(),
+                    });
+                }
             }
-            VNode::VariableReference {
-                var_id: variable_name(var_id, *t_offset),
-            }
+            Some(VNode::VariableReference {
+                var_id: variable_name(var_id, ast, ast.get_first_child(node).unwrap().id),
+            })
         }
-        ASTNodeType::BitwiseInverse => VNode::BitwiseInverse {},
-        ASTNodeType::Add => VNode::Add {},
-        ASTNodeType::Subtract => VNode::Subtract {},
+        ASTNodeType::BitwiseInverse => Some(VNode::BitwiseInverse {}),
+        ASTNodeType::Add => Some(VNode::Add {}),
+        ASTNodeType::Subtract => Some(VNode::Subtract {}),
+        ASTNodeType::TimeOffsetRelative { offset: _ } => None,
         _ => todo!(),
     };
 
-    let new_vnode = vast.new_node(vnode_data);
-    vast.append_to(vnode, new_vnode)?;
-    if let Some(children) = &ast.get_node(node).unwrap().children {
-        for child in children {
-            compile_expression(ast, *child, vast, new_vnode, variables)?;
+    if let Some(vnode_data) = new_node_data {
+        let new_vnode = vast.new_node(vnode_data);
+        vast.append_to(vnode, new_vnode)?;
+        if let Some(children) = &ast.get_node(node).unwrap().children {
+            for child in children {
+                compile_expression(ast, *child, vast, new_vnode, variables)?;
+            }
         }
     }
 
@@ -409,7 +425,8 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
             .into_iter()
             // Map each variable to its name with index (var_0, var_1, etc.), using flat_map to collect all values
             .flat_map(|var| {
-                (var.1.lowest_ref..(var.1.highest_ref + 1)).map(move |i| variable_name(&var.0, i))
+                (var.1.lowest_ref..(var.1.highest_ref + 1))
+                    .map(move |i| variable_name_relative(&var.0, i))
             })
             .collect();
 
@@ -431,7 +448,7 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
                         var_id: name.to_string(),
                     });
                     let assign_index_0 = v_tree.new_node(VNode::VariableReference {
-                        var_id: variable_name(&name, 0),
+                        var_id: variable_name_relative(&name, 0),
                     });
                     let assign_node = v_tree.new_node(VNode::AssignKeyword {});
 
@@ -457,10 +474,10 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
                 // etc.
                 for i in offsets.lowest_ref..offsets.highest_ref {
                     let lhs = v_tree.new_node(VNode::VariableReference {
-                        var_id: variable_name(&name, i),
+                        var_id: variable_name_relative(&name, i),
                     });
                     let rhs = v_tree.new_node(VNode::VariableReference {
-                        var_id: variable_name(&name, i + 1),
+                        var_id: variable_name_relative(&name, i + 1),
                     });
                     let reg_assign = v_tree.new_node(VNode::ClockAssign {});
 
@@ -481,18 +498,28 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
                         let rhs = child_node.children.as_ref().unwrap()[1];
 
                         let lhs_name = match &tree.get_node(lhs).unwrap().data.node_type {
-                            ASTNodeType::VariableReference { var_id, t_offset } => {
+                            ASTNodeType::VariableReference { var_id } => {
                                 if in_values.contains(var_id) {
                                     return Err(CompileError::InputAssignment {
                                         context: tree.get_node(lhs).unwrap().data.context.clone(),
                                     });
                                 }
-                                if t_offset < &0 {
-                                    return Err(CompileError::AssignmentInPast {
-                                        context: tree.get_node(lhs).unwrap().data.context.clone(),
-                                    });
+                                let t_offset = tree.get_first_child(lhs)?;
+                                if let ASTNodeType::TimeOffsetRelative { offset } =
+                                    t_offset.data.node_type
+                                {
+                                    if offset < 0 {
+                                        return Err(CompileError::AssignmentInPast {
+                                            context: tree
+                                                .get_node(lhs)
+                                                .unwrap()
+                                                .data
+                                                .context
+                                                .clone(),
+                                        });
+                                    }
                                 }
-                                variable_name(var_id, *t_offset)
+                                variable_name(var_id, &*tree, t_offset.id)
                             }
                             _ => unreachable!(),
                         };
@@ -530,7 +557,15 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
     }
 }
 
-/// Generate a Verilog variable name for the variable `var_id` at index `index`.
-fn variable_name(var_id: &String, index: i64) -> String {
+/// Generate a Verilog variable name for the variable `var_id` at the index given by the node at `offset_id` on `tree`.
+fn variable_name(var_id: &String, tree: &Tree<ASTNode>, offset_id: NodeId) -> String {
+    match tree.get_node(offset_id).unwrap().data.node_type {
+        ASTNodeType::TimeOffsetRelative { offset } => variable_name_relative(var_id, offset),
+        ASTNodeType::TimeOffsetAbsolute { time } => todo!(),
+        _ => unreachable!(),
+    }
+}
+
+fn variable_name_relative(var_id: &String, index: i64) -> String {
     format!("{}_{}", var_id, index.to_string().replace('-', "neg"))
 }

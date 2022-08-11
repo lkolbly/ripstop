@@ -47,7 +47,32 @@ pub fn parse(toparse: &str) -> Tree<ASTNode> {
             Rule::assignment => Some(ASTNodeType::Assign),
             Rule::indexed_variable => Some(ASTNodeType::VariableReference {
                 var_id: inner_rules.next().unwrap().as_str().to_string(),
-                t_offset: parse_t_offset(inner_rules.next().unwrap()),
+            }),
+            Rule::variable_index_relative => Some(ASTNodeType::TimeOffsetRelative {
+                offset: {
+                    match inner_rules.next() {
+                        Some(inner) => {
+                            let sign = match inner.as_rule() {
+                                Rule::addition => 1,
+                                Rule::subtraction => -1,
+                                _ => unreachable!(),
+                            };
+                            let unsigned: i64 =
+                                NumberLiteral::from_tree(inner_rules.next().unwrap())
+                                    .value
+                                    .try_into()
+                                    .unwrap();
+                            sign * unsigned
+                        }
+                        None => 0,
+                    }
+                },
+            }),
+            Rule::variable_index_absolute => Some(ASTNodeType::TimeOffsetAbsolute {
+                time: NumberLiteral::from_tree(inner_rules.next().unwrap())
+                    .value
+                    .try_into()
+                    .unwrap(),
             }),
             Rule::unary_operation => Some(
                 match inner_rules
@@ -129,32 +154,18 @@ pub fn parse(toparse: &str) -> Tree<ASTNode> {
             _ => unreachable!(),
         }
     }
-
-    fn parse_t_offset(pair: Pair<Rule>) -> i64 {
-        let mut inner_rules = pair.into_inner();
-        let sign = match inner_rules.next() {
-            Some(sign_pair) => match sign_pair.as_rule() {
-                Rule::addition => 1,
-                Rule::subtraction => -1,
-                _ => unreachable!(),
-            },
-            None => {
-                return 0;
-            }
-        };
-        let int: i64 = inner_rules.next().unwrap().as_str().parse().unwrap();
-        sign * int
-    }
 }
 
-#[derive(Debug, PartialEq)]
-struct NumberLiteral {
-    size_bits: usize,
-    value: u128, // This is the maximum supported integer literal
+#[derive(Clone, Debug, PartialEq)]
+pub struct NumberLiteral {
+    pub size_bits: usize,
+    pub value: u128, // This is the maximum supported integer literal
 }
 
 impl NumberLiteral {
     fn from_tree(tree: Pair<Rule>) -> Self {
+        let full_str = tree.as_str();
+
         let rule = tree.as_rule();
         let inner = tree.into_inner();
         let mut tree = match rule {
@@ -198,7 +209,11 @@ impl NumberLiteral {
                 }
             }
             Rule::pos_integer => {
-                unimplemented!();
+                let int: u128 = full_str.parse().unwrap();
+                return Self {
+                    size_bits: 64,
+                    value: int,
+                };
             }
             _ => {
                 panic!("Unexpected rule!");

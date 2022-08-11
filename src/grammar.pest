@@ -10,8 +10,9 @@ bit_type = { "bit" }
 block = _{ "{" ~ statement* ~ "}" }
 
 indexed_variable = { name ~ "[" ~ variable_index ~ "]" }
-variable_index = { "t" ~ (( addition | subtraction ) ~ pos_integer)? }
-pos_integer = ${ ASCII_DIGIT+ }
+variable_index_relative = { "t" ~ (( addition | subtraction ) ~ number_literal)? }
+variable_index_absolute = { number_literal }
+variable_index = _{ variable_index_relative | variable_index_absolute }
 
 statement = _{ assignment | declaration_statement }
 declaration_statement = _{ variable_declaration ~ ";" }
@@ -30,6 +31,7 @@ binary_operator = _{ addition | subtraction }
 addition = { "+" }
 subtraction = { "-" }
 
+pos_integer = { ASCII_DIGIT+ }
 number_literal_value_digit = ${ ASCII_DIGIT | "_" | "a" | "b" | "c" | "d" | "e" | "f" }
 number_literal_value = ${ number_literal_value_digit+ }
 number_literal_bits = { ASCII_DIGIT+ }
