@@ -80,6 +80,7 @@ impl<T> Tree<T> {
         let node = self.get_node(id)?;
         let children = node
             .children
+            .as_ref()
             .ok_or(TreeError::ChildrenExpected { node_id: id })?;
         let child_id = children.get(child_index).ok_or(TreeError::ChildNotFound {
             node_id: id,
