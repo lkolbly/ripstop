@@ -3,7 +3,7 @@ use std::{collections::HashMap, fmt::Display};
 use crate::{compile::CompileError, parse::Rule, tree::Tree, verilog_ast::VNode};
 use pest::iterators::Pair;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Type {
     Bit,
     Bits { size: usize },

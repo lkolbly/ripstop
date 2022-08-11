@@ -69,15 +69,66 @@ impl VarBounds {
 /// * Verifies that types in assignments and expressions match up correctly (i.e. verifies types)
 fn verify(tree: &Tree<ASTNode>, variables: HashMap<String, VarBounds>) -> Result<(), CompileError> {
     //Type verification, done bottom-up, keeping track of each nodes' return type
+    //Done "recursively" for each assignment
     for n in tree {
         match &tree[n].data.node_type {
             ASTNodeType::Assign => {
-                //Type verification
+                //The method to be applied recursively. Needs to cover anything that would be below an assignment
+                fn f(
+                    tree: &Tree<ASTNode>,
+                    this_node: NodeId,
+                    child_vals: Vec<&Result<Type, CompileError>>,
+                ) -> Result<Type, CompileError> {
+                    let this_node = &tree[this_node];
+                    let child_vals = {
+                        let mut v = Vec::with_capacity(child_vals.len());
+                        for c in child_vals {
+                            match c {
+                                Ok(t) => v.push(*t),
+                                Err(e) => return Err(e.clone()),
+                            }
+                        }
 
-                //Iterate through the children of `c` backwards and bottom-up and make sure the types match
-                //This iteration is accomplished by reversing the normally depth-first `iter_subtree`
-                for c in tree.iter_subtree(n) {
-                    //
+                        v
+                    };
+
+                    match &this_node.data.node_type {
+                        ASTNodeType::VariableReference { var_id, t_offset } => todo!(),
+                        ASTNodeType::BitwiseInverse => todo!(),
+                        ASTNodeType::Add => todo!(),
+                        ASTNodeType::Subtract => todo!(),
+                        ASTNodeType::Assign => todo!(),
+                        ASTNodeType::VariableDeclaration { var_type, var_id } => todo!(),
+                        //Invalid nodes will be expressed as a bad relationship between this node and its children
+                        _ => {
+                            //Start with this node
+                            let mut v = vec![this_node.data.clone()];
+                            //Add the children
+                            v.append(
+                                &mut this_node
+                                    .children
+                                    .clone()
+                                    .unwrap()
+                                    .into_iter()
+                                    .map(|id| tree[id].data.clone())
+                                    .collect(),
+                            );
+                            Err(CompileError::InvalidNodeTypes { nodes: v })
+                        }
+                    }
+                }
+
+                let children = tree[n].children.clone().unwrap();
+                let lhs_t = tree.recurse_iterative(children[0], f)?;
+                let rhs_t = tree.recurse_iterative(children[1], f)?;
+
+                if lhs_t != rhs_t {
+                    let rhs = &tree[children[1]];
+                    return Err(CompileError::MismatchedTypes {
+                        context: rhs.data.context.clone(),
+                        current_type: rhs_t,
+                        needed_type: lhs_t,
+                    });
                 }
             }
             _ => (),

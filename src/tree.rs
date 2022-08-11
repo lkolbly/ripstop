@@ -245,16 +245,16 @@ impl<T> Tree<T> {
 
     /// Simulates recursion using iteration and calls the provided method on each node starting at the head
     ///
-    /// The method acts on data from each node and the values returned by their children
+    /// The method acts on the following data: the tree itself, the index of each node, and the values returned by each node's children
     pub fn recurse_iterative<V, F>(&self, head: NodeId, f: F) -> V
     where
-        F: Fn(&T, Vec<V>) -> V,
+        F: Fn(&Tree<T>, NodeId, Vec<&V>) -> V,
     {
         //Tentative algorithm (to be optimized):
         //1-Define a frontier which contains the deepest children of `head`
         //2-Until the frontier is just `head`, do the following for every node in the frontier:
         //-a-If the parent of this node is contained in the frontier, remove this node from the frontier
-        //-b-If every child of this node's parent is contained in the frontier, calculate the parent's value and add it to the frontier
+        //-b-If every sibling of this node is contained in the frontier, calculate the parent's value and add it to the frontier
 
         //Step 1
         let mut frontier = HashMap::new();
@@ -262,27 +262,41 @@ impl<T> Tree<T> {
         for n in self.iter_subtree(head) {
             //If `n` has no children, it is part of the deepest children (which is the starting value of the frontier)
             if let None = self[n].children {
-                frontier.insert(n, (f)(&self[n].data, Vec::new()));
+                frontier.insert(n, (f)(&self, n, Vec::new()));
             }
         }
 
         //Step 2
         loop {
             let frontier_nodes = frontier.keys().map(|n| *n).collect::<Vec<NodeId>>();
-            for n in frontier_nodes {
+            'frontier: for n in frontier_nodes {
                 let n = &self[n];
+                let parent = &self[n.parent.unwrap()];
+
                 //2.a)
-                if frontier.contains_key(&n.parent.unwrap()) {
+                if frontier.contains_key(&parent.id) {
                     frontier.remove(&n.id);
                 }
+
                 //2.b)
-                for c in &self[n.parent.unwrap()].children.clone().unwrap() {
-                    //
+                let mut sibling_values = Vec::new();
+                for sibling in &parent.children.clone().unwrap() {
+                    if let Some(v) = frontier.get(sibling) {
+                        sibling_values.push(v);
+                    } else {
+                        continue 'frontier;
+                    }
                 }
+
+                let parent_val = (f)(&self, parent.id, sibling_values);
+                frontier.insert(parent.id, parent_val);
+            }
+
+            //If the frontier contains the `head` node, then return its value
+            if let Some(head_val) = frontier.remove(&head) {
+                return head_val;
             }
         }
-
-        todo!()
     }
 }
 
