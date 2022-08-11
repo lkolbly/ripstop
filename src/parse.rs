@@ -155,6 +155,8 @@ struct NumberLiteral {
 
 impl NumberLiteral {
     fn from_tree(tree: Pair<Rule>) -> Self {
+        let full_str = tree.as_str();
+
         let rule = tree.as_rule();
         let inner = tree.into_inner();
         let mut tree = match rule {
@@ -198,7 +200,11 @@ impl NumberLiteral {
                 }
             }
             Rule::pos_integer => {
-                unimplemented!();
+                let int: u128 = full_str.parse().unwrap();
+                return Self {
+                    size_bits: 64,
+                    value: int,
+                };
             }
             _ => {
                 panic!("Unexpected rule!");
