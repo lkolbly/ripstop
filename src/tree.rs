@@ -73,6 +73,23 @@ impl<T> Tree<T> {
         &mut self.nodes[id]
     }
 
+    /// Shorthand to get an immutable reference to one of a node's children
+    pub fn get_child_node(&self, id: NodeId, child_index: usize) -> Result<&Node<T>, TreeError> {
+        let node = self.get_node(id)?;
+        let children = node
+            .children
+            .ok_or(TreeError::ChildrenExpected { node_id: id })?;
+        let child_id = children.get(child_index).ok_or(TreeError::ChildNotFound {
+            node_id: id,
+            child_index,
+        })?;
+        self.get_node(*child_id)
+    }
+
+    pub fn get_first_child(&self, id: NodeId) -> Result<&Node<T>, TreeError> {
+        self.get_child_node(id, 0)
+    }
+
     /// Creates a new node with `data` and returns its `NodeId`
     pub fn new_node(&mut self, data: T) -> NodeId {
         let id = NodeId {
