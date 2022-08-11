@@ -1,9 +1,10 @@
 module_declaration = { SOI ~ "module" ~ name ~ variable_declaration_list ~ "->" ~ variable_declaration_list ~ block ~ EOI }
 
-name = { (ASCII_ALPHA | "_")+ ~ (ASCII_ALPHANUMERIC | "_")* }
+name = ${ (ASCII_ALPHA | "_")+ ~ (ASCII_ALPHANUMERIC | "_")* }
 
 variable_declaration_list = { "(" ~ (variable_declaration)* ~ ("," ~ variable_declaration)* ~ ")" }
-variable_declaration = { variable_type ~ name }
+variable_declaration = { type_then_space ~ name }
+type_then_space = ${ variable_type ~ WHITESPACE }
 variable_type = { bit_type }
 bit_type = { "bit" }
 
