@@ -1,9 +1,22 @@
-use crate::parse::Rule;
+use std::{collections::HashMap, fmt::Display};
+
+use crate::{compile::CompileError, parse::Rule, tree::Tree, verilog_ast::VNode};
 use pest::iterators::Pair;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum Type {
     Bit,
+    Bits { size: usize },
+}
+
+impl Display for Type {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Type::Bit => "bit".to_string(),
+            Type::Bits { size } => format!("bits<{size}>"),
+        };
+        write!(f, "{}", s)
+    }
 }
 
 /// Struct for storing the context of an AST node, such as its position within the input string and the input string representing the node.
@@ -37,6 +50,20 @@ impl StringContext {
             line_str: pos.line_of().to_string(),
             node_str: pair_str.to_string(),
         }
+    }
+}
+
+impl Display for StringContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "line {} col {}: {}\n{}{}^",
+            self.line,
+            self.col,
+            self.node_str,
+            self.line_str,
+            " ".repeat(self.col - 1)
+        )
     }
 }
 

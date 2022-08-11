@@ -1,4 +1,5 @@
 use std::{
+    collections::{HashMap, HashSet},
     fmt,
     ops::{Add, AddAssign, Index, IndexMut, Sub, SubAssign},
 };
@@ -8,8 +9,6 @@ pub enum TreeError {
     NodeNotFound { node_id: NodeId },
 }
 
-//PROBLEM?: We don't know where the head of the tree is
-//In some cases, it's fine to assume that the head of the tree is index 0 but that's definitely not true generically
 //This mostly just makes recursion and such harder, though
 #[derive(Debug, Clone)]
 pub struct Tree<T> {
@@ -212,34 +211,6 @@ impl<T> Tree<T> {
         Ok(offset)
     }
 
-    /// Applies a recursive operation `f` on every node on or below `n`. Note that `f` is applied to each node *before* their children
-    ///
-    /// Each node is passed a mutable reference to `val` during execution, which can be used to store recursion return values (such as errors)
-    ///
-    /// **BE WARNED**: ~~there be dragons~~ this method *does not* check for infinite loops at the moment
-    pub fn recurse_on_node<V, F>(
-        &mut self,
-        n: NodeId,
-        f: &mut F,
-        val: &mut V,
-    ) -> Result<(), TreeError>
-    where
-        F: FnMut(&mut T, &mut V) + Clone,
-    {
-        let node: &mut Node<T> = self.get_node_mut(n)?;
-        //Apply the method on `n` before its children
-        (f)(&mut node.data, val);
-
-        //Iterate through the node's children and recursively apply on them
-        if let Some(children) = node.children.clone() {
-            for c in children {
-                self.recurse_on_node(c, f, val)?;
-            }
-        }
-
-        Ok(())
-    }
-
     /// Returns an in-order iterator over a subtree that returns `NodeId`'s.
     /// Implemented non-recursively.
     ///
@@ -250,6 +221,48 @@ impl<T> Tree<T> {
     /// To iterate over the entire tree, use `into_iter`.
     pub fn iter_subtree(&'_ self, head: NodeId) -> TreeIterator<'_, T> {
         TreeIterator::iter_subtree(self, head).unwrap()
+    }
+
+    /// Simulates recursion using iteration and calls the provided method on each node starting at the head
+    ///
+    /// The method acts on data from each node and the values returned by their children
+    pub fn recurse_iterative<V, F>(&self, head: NodeId, f: F) -> V
+    where
+        F: Fn(&T, Vec<V>) -> V,
+    {
+        //Tentative algorithm (to be optimized):
+        //1-Define a frontier which contains the deepest children of `head`
+        //2-Until the frontier is just `head`, do the following for every node in the frontier:
+        //-a-If the parent of this node is contained in the frontier, remove this node from the frontier
+        //-b-If every child of this node's parent is contained in the frontier, calculate the parent's value and add it to the frontier
+
+        //Step 1
+        let mut frontier = HashMap::new();
+
+        for n in self.iter_subtree(head) {
+            //If `n` has no children, it is part of the deepest children (which is the starting value of the frontier)
+            if let None = self[n].children {
+                frontier.insert(n, (f)(&self[n].data, Vec::new()));
+            }
+        }
+
+        //Step 2
+        loop {
+            let frontier_nodes = frontier.keys().map(|n| *n).collect::<Vec<NodeId>>();
+            for n in frontier_nodes {
+                let n = &self[n];
+                //2.a)
+                if frontier.contains_key(&n.parent.unwrap()) {
+                    frontier.remove(&n.id);
+                }
+                //2.b)
+                for c in &self[n.parent.unwrap()].children.clone().unwrap() {
+                    //
+                }
+            }
+        }
+
+        todo!()
     }
 }
 
@@ -379,7 +392,7 @@ pub struct Node<T> {
     pub data: T,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct NodeId {
     //using usize guarantees vector of nodes is not too large
     index: usize,

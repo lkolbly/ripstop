@@ -1,4 +1,4 @@
-use crate::ast::StringContext;
+use crate::ast::{StringContext, Type};
 use std::collections::HashMap;
 
 use crate::{
@@ -31,24 +31,24 @@ struct VarBounds {
     lowest_ref: i64,
     highest_ref: i64,
     highest_assignment: i64,
-    var_type: VarType,
-    /*is_input: bool,
-    is_output: bool,*/
+    var_scope: VarScope,
+    var_type: Type,
 }
 
 #[derive(Debug, Clone, Copy)]
-enum VarType {
+enum VarScope {
     Input,
     Output,
     Local,
 }
 
 impl VarBounds {
-    fn new(offset: i64, var_type: VarType) -> VarBounds {
+    fn new(offset: i64, var_scope: VarScope, var_type: Type) -> VarBounds {
         VarBounds {
             lowest_ref: offset,
             highest_ref: offset,
             highest_assignment: offset,
+            var_scope,
             var_type,
         }
     }
@@ -65,6 +65,79 @@ impl VarBounds {
     }
 }
 
+/// Currently, this takes the input tree and does the following:
+/// * Verifies that types in assignments and expressions match up correctly (i.e. verifies types)
+fn verify(tree: &Tree<ASTNode>, variables: HashMap<String, VarBounds>) -> Result<(), CompileError> {
+    //Type verification, done bottom-up, keeping track of each nodes' return type
+    for n in tree {
+        match &tree[n].data.node_type {
+            ASTNodeType::Assign => {
+                //Type verification
+
+                //Iterate through the children of `c` backwards and bottom-up and make sure the types match
+                //This iteration is accomplished by reversing the normally depth-first `iter_subtree`
+                for c in tree.iter_subtree(n) {
+                    //
+                }
+            }
+            _ => (),
+        }
+    }
+    Ok(())
+}
+
+/// Returns the verilog equivalent of adding together `lhs` and `rhs`. At the moment, this supports addition between two nodes of type `VariableReference`
+///
+/// The head of the tree this returns will be a variant of `VNode::Add`
+/*fn add(
+    tree: &Tree<ASTNode>,
+    variables: &HashMap<String, VarBounds>,
+    lhs_id: NodeId,
+    rhs_id: NodeId,
+) -> Result<Tree<VNode>, CompileError> {
+    let lhs = &tree[lhs_id].data;
+    let rhs = &tree[rhs_id].data;
+    //Make sure both nodes are var references
+    match (&lhs.node_type, &rhs.node_type) {
+        (
+            ASTNodeType::VariableReference {
+                var_id: var_id_l,
+                t_offset: t_offset_l,
+            },
+            ASTNodeType::VariableReference {
+                var_id: var_id_r,
+                t_offset: t_offset_r,
+            },
+        ) => {
+            let mut tree = Tree::new();
+            let add = tree.new_node(VNode::Add {});
+
+            let lhs_bounds = variables.get(var_id_l).unwrap();
+            let rhs_bounds = variables.get(var_id_r).unwrap();
+
+            match (&lhs_bounds.var_type, &rhs_bounds.var_type) {
+                (Type::Bit, Type::Bit) => todo!(),
+                (Type::Bits { size: lhs_size }, Type::Bits { size: rhs_size }) => todo!(),
+                _ => {
+                    return Err(CompileError::MismatchedTypes {
+                        context: rhs.context.clone(),
+                        current_type: rhs_bounds.var_type,
+                        needed_type: lhs_bounds.var_type,
+                    })
+                }
+            }
+
+            Ok(tree)
+        }
+        _ => Err(CompileError::InvalidNodeTypes {
+            nodes: vec![lhs.clone(), rhs.clone()],
+        }),
+    }
+}*/
+//PROBLEM:
+//Due to the solution used to fix the below error, unused variables will have a register assigned to them. This can be fixed by an optimization step
+//--Undeclared variables used to panic on an `unwrap()` of `Option<VarBounds>` right before the method returned
+
 /// Returns a list of all variables referenced in the input AST and the lowest *and* highest t-values referenced for each variable. This is accomplished recursively
 ///
 /// Variables that are inputs or outputs will always contain 0 within the closed range \[lowest, highest\].
@@ -73,28 +146,20 @@ impl VarBounds {
 fn get_var_bounds(tree: &Tree<ASTNode>) -> Result<HashMap<String, VarBounds>, CompileError> {
     //A list of all the variables and their t-offsets. If the variable has only been declared (neither referenced or assigned), then the t-offset will be `None`
     //Reminder: a positive t-offset represents [t+n] and a negative represents [t-n]
-    let mut variables: HashMap<String, Option<VarBounds>> = HashMap::new();
+    let mut variables: HashMap<String, VarBounds> = HashMap::new();
 
     //A closure taking information about a var reference and inserting that data into `variables` if needed
-    let insert = |var_id: String,
+    let insert = |var_id: &str,
                   nodeid: NodeId,
                   offset: i64,
                   is_assignment: bool,
-                  variables: &mut HashMap<String, Option<VarBounds>>|
+                  variables: &mut HashMap<String, VarBounds>|
      -> Result<(), CompileError> {
-        if let Some(bounds_opt) = variables.get_mut(&var_id) {
+        if let Some(bounds) = variables.get_mut(var_id) {
             // Update the stored bounds with this new offset
-            if let Some(bounds) = bounds_opt {
-                bounds.update(offset);
-                if is_assignment {
-                    bounds.update_assignment(offset);
-                }
-            } else {
-                let mut new = VarBounds::new(offset, VarType::Local);
-                if is_assignment {
-                    new.update_assignment(offset)
-                }
-                variables.insert(var_id.to_string(), Some(new));
+            bounds.update(offset);
+            if is_assignment {
+                bounds.update_assignment(offset);
             }
             Ok(())
         } else {
@@ -112,40 +177,35 @@ fn get_var_bounds(tree: &Tree<ASTNode>) -> Result<HashMap<String, VarBounds>, Co
                 out_values,
             } => {
                 // I/O variables are guaranteed a reference at offset 0
-                for (_t, name) in in_values {
-                    variables.insert(name.clone(), Some(VarBounds::new(0, VarType::Input)));
+                for (t, name) in in_values {
+                    variables.insert(name.clone(), VarBounds::new(0, VarScope::Input, *t));
                 }
-                for (_t, name) in out_values {
-                    variables.insert(name.clone(), Some(VarBounds::new(0, VarType::Output)));
+                for (t, name) in out_values {
+                    variables.insert(name.clone(), VarBounds::new(0, VarScope::Output, *t));
                 }
             }
             ASTNodeType::VariableReference {
                 var_id,
                 t_offset: new_t,
-            } => insert(var_id.to_string(), nodeid, *new_t, false, &mut variables)?,
-            ASTNodeType::VariableDeclaration {
-                var_type: _,
-                var_id,
-            } => {
-                variables.insert(var_id.clone(), None);
+            } => insert(var_id, nodeid, *new_t, false, &mut variables)?,
+            ASTNodeType::VariableDeclaration { var_type, var_id } => {
+                //Never referenced variables have an offset of 0 by default
+                variables.insert(
+                    var_id.clone(),
+                    VarBounds::new(0, VarScope::Local, *var_type),
+                );
             }
             ASTNodeType::Assign => {
                 let lhs = tree.get_node(nodeid).unwrap().children.as_ref().unwrap()[0];
                 if let ASTNodeType::VariableReference { var_id, t_offset } =
                     &tree.get_node(lhs).unwrap().data.node_type
                 {
-                    insert(var_id.to_string(), nodeid, *t_offset, true, &mut variables)?;
+                    insert(var_id, nodeid, *t_offset, true, &mut variables)?;
                 }
             }
             _ => {}
         }
     }
-
-    //For each variable, set its offset to 0 if never referenced
-    let variables = variables
-        .drain()
-        .map(|(name, t_offset)| (name, t_offset.unwrap()))
-        .collect();
 
     Ok(variables)
 }
@@ -157,7 +217,7 @@ fn compile_expression(
     vnode: NodeId,
     variables: &HashMap<String, VarBounds>,
 ) -> Result<(), CompileError> {
-    let new_node_data = match &ast.get_node(node).unwrap().data.node_type {
+    let vnode_data = match &ast.get_node(node).unwrap().data.node_type {
         ASTNodeType::VariableReference { var_id, t_offset } => {
             let bounds = variables.get(var_id).unwrap();
             if t_offset > &bounds.highest_assignment {
@@ -165,23 +225,21 @@ fn compile_expression(
                     context: ast.get_node(node).unwrap().data.context.clone(),
                 });
             }
-            Some(VNode::VariableReference {
+            VNode::VariableReference {
                 var_id: variable_name(var_id, *t_offset),
-            })
+            }
         }
-        ASTNodeType::BitwiseInverse => Some(VNode::BitwiseInverse {}),
-        ASTNodeType::Add => Some(VNode::Add {}),
-        ASTNodeType::Subtract => Some(VNode::Subtract {}),
+        ASTNodeType::BitwiseInverse => VNode::BitwiseInverse {},
+        ASTNodeType::Add => VNode::Add {},
+        ASTNodeType::Subtract => VNode::Subtract {},
         _ => todo!(),
     };
 
-    if let Some(vnode_data) = new_node_data {
-        let new_vnode = vast.new_node(vnode_data);
-        vast.append_to(vnode, new_vnode)?;
-        if let Some(children) = &ast.get_node(node).unwrap().children {
-            for child in children {
-                compile_expression(ast, *child, vast, new_vnode, variables)?;
-            }
+    let new_vnode = vast.new_node(vnode_data);
+    vast.append_to(vnode, new_vnode)?;
+    if let Some(children) = &ast.get_node(node).unwrap().children {
+        for child in children {
+            compile_expression(ast, *child, vast, new_vnode, variables)?;
         }
     }
 
@@ -191,11 +249,32 @@ fn compile_expression(
 #[derive(Clone)]
 pub enum CompileError {
     CouldNotFindASTHead,
-    TreeError { err: TreeError },
-    UndeclaredVariable { context: StringContext },
-    ReferenceAfterAssignment { context: StringContext },
-    AssignmentInPast { context: StringContext },
-    InputAssignment { context: StringContext },
+    TreeError {
+        err: TreeError,
+    },
+    UndeclaredVariable {
+        context: StringContext,
+    },
+    ReferenceAfterAssignment {
+        context: StringContext,
+    },
+    AssignmentInPast {
+        context: StringContext,
+    },
+    InputAssignment {
+        context: StringContext,
+    },
+    /// When a variable/literal/etc has one type but should have another type in order to compile
+    MismatchedTypes {
+        context: StringContext,
+        current_type: Type,
+        needed_type: Type,
+    },
+    /// When a set of nodes have types which do not make sense in relation to eachother.
+    /// For example, this error will be raised when adding a `ModuleDeclaration` to a `VariableReference` and it will contain data for those two nodes
+    InvalidNodeTypes {
+        nodes: Vec<ASTNode>,
+    },
 }
 
 impl From<TreeError> for CompileError {
@@ -206,18 +285,8 @@ impl From<TreeError> for CompileError {
 
 impl std::fmt::Debug for CompileError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let mut include_position = |ctx: &StringContext, msg: &str| {
-            write!(
-                f,
-                "{} on line {} col {}: {}\n{}{}^",
-                msg,
-                ctx.line,
-                ctx.col,
-                ctx.node_str,
-                ctx.line_str,
-                " ".repeat(ctx.col - 1)
-            )
-        };
+        let mut include_position =
+            |ctx: &StringContext, msg: &str| write!(f, "{} on {}", msg, ctx,);
         match self {
             CompileError::CouldNotFindASTHead => write!(f, "Could not find AST head."),
             CompileError::TreeError { err } => write!(f, "Tree error: {:?}", err),
@@ -233,6 +302,16 @@ impl std::fmt::Debug for CompileError {
             CompileError::InputAssignment { context } => {
                 include_position(context, "Assigning to an input value")
             }
+            CompileError::MismatchedTypes { context, current_type, needed_type } => {
+                include_position(context, &format!("Mismatched types: provided `{}` but should have been `{}`", current_type, needed_type))
+            },
+            CompileError::InvalidNodeTypes { nodes } => {
+                let mut nodes_string = String::new();
+                for n in nodes {
+                    nodes_string += &format!("{}\n", n.context);
+                }
+                write!(f, "The following nodes have invalid types given their relationship:\n{}", nodes_string)
+            },
         }
     }
 }
