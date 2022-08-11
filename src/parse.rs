@@ -158,6 +158,12 @@ pub fn parse(toparse: &str) -> Tree<ASTNode> {
             .unwrap();
         match child.as_rule() {
             Rule::bit_type => Type::Bit,
+            Rule::bits_type => Type::Bits {
+                size: NumberLiteral::from_tree(child.into_inner().next().unwrap())
+                    .value
+                    .try_into()
+                    .unwrap(),
+            },
             _ => unreachable!(),
         }
     }
