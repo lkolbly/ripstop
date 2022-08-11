@@ -98,6 +98,7 @@ fn verify(
                     };
 
                     match &this_node.data.node_type {
+                        //Variable references pass their types up without needing to check their (non-existent) children
                         ASTNodeType::VariableReference { var_id } => {
                             let bounds = &variables[var_id];
                             Ok(bounds.var_type)
@@ -129,8 +130,10 @@ fn verify(
                                 _ => err,
                             }
                         }
-                        //Variable declarations pass their types up without needing to check their (non-existent) children
-                        ASTNodeType::VariableDeclaration { var_type, var_id } => todo!(),
+                        //Time offsets need to be allowed but do *not* pass any type, they are typeless
+                        //Since this can't be represented, just return a type of bits<0>
+                        ASTNodeType::TimeOffsetRelative { offset: _ }
+                        | ASTNodeType::TimeOffsetAbsolute { time: _ } => Ok(Type::None),
                         //Invalid nodes (which do not work as expressions in assignment) will be expressed as a bad relationship between this node and its children
                         _ => {
                             //Start with this node
@@ -140,7 +143,7 @@ fn verify(
                                 &mut this_node
                                     .children
                                     .clone()
-                                    .unwrap()
+                                    .unwrap_or_default()
                                     .into_iter()
                                     .map(|id| tree[id].data.clone())
                                     .collect(),
@@ -474,9 +477,33 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
 
         //Register chain creation for each variable
         if !registers.is_empty() {
-            let reg_chain = VNode::RegisterDeclare { vars: registers };
+            let reg_chain = VNode::RegisterDeclare {};
             let reg_chain = v_tree.new_node(reg_chain);
             v_tree.append_to(v_head, reg_chain)?;
+
+            // Add all the registers to the chain. If the register is an array (as of now, bits<n>), create an Index above the VariableReference
+            for reg in registers {
+                let var_node = VNode::VariableReference {
+                    var_id: reg.clone(),
+                };
+                let reg_head = {
+                    let var = v_tree.new_node(var_node);
+                    println!("Reg name: {}\nCurrent `variables`: {:?}", reg, variables);
+
+                    panic!("Currently, this loop has no way to know whether or not to add an index to a register. This can be solved by finding the bounds using `variables[reg]`, but the problem is that each register name `reg` is received as a formatted string (i.e. `foo_1` or `foo_neg2` not `foo`)");
+
+                    match variables[&reg].var_type {
+                        Type::Bits { size } => {
+                            let index_node = v_tree.new_node(VNode::Index { high: size, low: 0 });
+                            v_tree.append_to(index_node, var)?;
+                            index_node
+                        }
+                        _ => var,
+                    }
+                };
+
+                v_tree.append_to(reg_chain, reg_head)?;
+            }
 
             for (name, offsets) in variables.clone().into_iter() {
                 // Assign indexed variables to their input/output counterparts

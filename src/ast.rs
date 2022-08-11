@@ -4,6 +4,7 @@ use std::fmt::Display;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Type {
+    None,
     Bit,
     Bits { size: usize },
 }
@@ -13,6 +14,8 @@ impl Display for Type {
         let s = match self {
             Type::Bit => "bit".to_string(),
             Type::Bits { size } => format!("bits<{size}>"),
+            //Alternatively, `None` could become `_`
+            Type::None => "[TYPELESS]".to_string(),
         };
         write!(f, "{}", s)
     }

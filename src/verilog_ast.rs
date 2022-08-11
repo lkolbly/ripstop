@@ -29,9 +29,8 @@ pub enum VNode {
         out_values: Vec<String>,
     },
 
-    RegisterDeclare {
-        vars: Vec<String>,
-    },
+    ///Declares each child as a register in a chain (i.e. `reg a, b, c, d[31:0];`)
+    RegisterDeclare {},
     VariableReference {
         var_id: String,
     },
@@ -60,8 +59,8 @@ pub enum VNode {
     ///
     /// `[high:low]`
     Index {
-        high: u64,
-        low: u64,
+        high: usize,
+        low: usize,
     },
 }
 
@@ -112,7 +111,15 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
 
             format!("module {id} (\n{all_values_string}\n);\n{children_string}\nendmodule")
         }
-        VNode::RegisterDeclare { vars } => format!("{whitespace}reg {};", vars.join(", ")),
+        VNode::RegisterDeclare {} => {
+            let vars = children
+                .unwrap()
+                .iter()
+                .map(|n| verilog_ast_to_string(*n, tree, num_whitespace))
+                .collect::<Vec<_>>();
+
+            format!("{whitespace}reg {};", vars.join(", "))
+        }
         VNode::AlwaysBegin { trigger } => {
             let children_string = get_children_string(children, tree, next_num_whitespace);
             format!(
