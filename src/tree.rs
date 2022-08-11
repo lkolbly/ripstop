@@ -28,6 +28,24 @@ impl<T> Tree<T> {
         Tree { nodes: Vec::new() }
     }
 
+    /// Creates a new tree and populates it with nodes using the parameter `nodes`.
+    /// The parameter lists each node's data and children
+    pub fn new_with_nodes(nodes: Vec<(T, Vec<NodeId>)>) -> Tree<T> {
+        let mut t = Tree::new();
+
+        //Holds the children of each given node
+        let mut node_children: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
+
+        /*for i in 0..nodes.len() {
+            let node = t.new_node(nodes[i].0);
+            node_children.insert(i.into(), nodes[i].1);
+        }*/
+
+        //for i in 0..nodes.len() {}
+        todo!();
+        t
+    }
+
     /// Finds the first node without any parents. If no such node exists, returns `None`
     pub fn find_head(&self) -> Option<NodeId> {
         for i in 0..self.nodes.len() {
@@ -245,10 +263,11 @@ impl<T> Tree<T> {
 
     /// Simulates recursion using iteration and calls the provided method on each node starting at the head
     ///
-    /// The method acts on the following data: the tree itself, the index of each node, and the values returned by each node's children
-    pub fn recurse_iterative<V, F>(&self, head: NodeId, f: F) -> V
+    /// The method acts on the following data: the tree itself, the index of each node, and the values returned by each node's children.
+    /// It also uses some static value of type `&C` provided by the user if needed
+    pub fn recurse_iterative<V, C, F>(&self, head: NodeId, f: F, static_val: &C) -> V
     where
-        F: Fn(&Tree<T>, NodeId, Vec<&V>) -> V,
+        F: Fn(&Tree<T>, NodeId, Vec<&V>, &C) -> V,
     {
         //Tentative algorithm (to be optimized):
         //1-Define a frontier which contains the deepest children of `head`
@@ -262,7 +281,7 @@ impl<T> Tree<T> {
         for n in self.iter_subtree(head) {
             //If `n` has no children, it is part of the deepest children (which is the starting value of the frontier)
             if let None = self[n].children {
-                frontier.insert(n, (f)(&self, n, Vec::new()));
+                frontier.insert(n, (f)(&self, n, Vec::new(), static_val));
             }
         }
 
@@ -288,7 +307,7 @@ impl<T> Tree<T> {
                     }
                 }
 
-                let parent_val = (f)(&self, parent.id, sibling_values);
+                let parent_val = (f)(&self, parent.id, sibling_values, static_val);
                 frontier.insert(parent.id, parent_val);
             }
 

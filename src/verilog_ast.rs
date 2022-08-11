@@ -46,15 +46,23 @@ pub enum VNode {
     },
 
     //Unary ops have one child
-    ///Copied from ast::Node
+    /// Copied from ast::Node
     BitwiseInverse {},
 
     //Binary operators have two children
-    ///Copied from ast::Node
+    /// Copied from ast::Node
     Add {},
 
-    ///Copied from ast::Node
+    /// Copied from ast::Node
     Subtract {},
+
+    /// An index into a single value or range of an array. This is the parent of what it indexes
+    ///
+    /// `[high:low]`
+    Index {
+        high: u64,
+        low: u64,
+    },
 }
 
 pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: usize) -> String {
@@ -81,11 +89,6 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
             .collect::<Vec<_>>()
             .join(&format!("\n{}", ""))
     }
-
-    /*for n in iter {
-        let this_node = &tree[head];
-        let children = this_node.children.clone();
-    }*/
 
     let s = match &this_node.data {
         VNode::ModuleDeclaration {
@@ -156,6 +159,13 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
                 "{whitespace}{} - {}",
                 verilog_ast_to_string(children[0], tree, 0),
                 verilog_ast_to_string(children[1], tree, 0)
+            )
+        }
+        VNode::Index { high, low } => {
+            let children = children.unwrap();
+            format!(
+                "{whitespace}{}[{high}:{low}]",
+                verilog_ast_to_string(children[0], tree, 0),
             )
         }
     };
