@@ -7,6 +7,8 @@ use std::{
 #[derive(Debug, Clone)]
 pub enum TreeError {
     NodeNotFound { node_id: NodeId },
+    ChildrenExpected { node_id: NodeId },
+    ChildNotFound { node_id: NodeId, child_index: usize },
 }
 
 //This mostly just makes recursion and such harder, though
@@ -70,6 +72,24 @@ impl<T> Tree<T> {
     /// Tries to get the `Node<T>` with `id`, panics if it can't be found
     pub fn get_node_mut_unchecked(&mut self, id: NodeId) -> &mut Node<T> {
         &mut self.nodes[id]
+    }
+
+    /// Shorthand to get an immutable reference to one of a node's children
+    pub fn get_child_node(&self, id: NodeId, child_index: usize) -> Result<&Node<T>, TreeError> {
+        let node = self.get_node(id)?;
+        let children = node
+            .children
+            .as_ref()
+            .ok_or(TreeError::ChildrenExpected { node_id: id })?;
+        let child_id = children.get(child_index).ok_or(TreeError::ChildNotFound {
+            node_id: id,
+            child_index,
+        })?;
+        self.get_node(*child_id)
+    }
+
+    pub fn get_first_child(&self, id: NodeId) -> Result<&Node<T>, TreeError> {
+        self.get_child_node(id, 0)
     }
 
     /// Creates a new node with `data` and returns its `NodeId`

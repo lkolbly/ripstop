@@ -43,7 +43,7 @@ fn compile(input: std::path::PathBuf, output: Option<std::path::PathBuf>) -> i32
     let input = std::fs::read_to_string(&inputpath).unwrap();
 
     let mut a = parse(&input);
-    println!("{:#?}\n", a);
+    println!("{}\n", a);
 
     let v_a = match compile_module(&mut a) {
         Ok(x) => x,
@@ -53,7 +53,7 @@ fn compile(input: std::path::PathBuf, output: Option<std::path::PathBuf>) -> i32
         }
     };
 
-    println!("Bare tree:\n\n{:#?}\n\n", v_a);
+    println!("Bare tree:\n\n{}\n\n", v_a);
 
     println!(
         "Verilog Compiled:\n\n{}",
