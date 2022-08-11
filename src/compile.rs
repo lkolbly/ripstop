@@ -31,18 +31,25 @@ struct VarBounds {
     lowest_ref: i64,
     highest_ref: i64,
     highest_assignment: i64,
-    is_input: bool,
-    is_output: bool,
+    var_type: VarType,
+    /*is_input: bool,
+    is_output: bool,*/
+}
+
+#[derive(Debug, Clone, Copy)]
+enum VarType {
+    Input,
+    Output,
+    Local,
 }
 
 impl VarBounds {
-    fn new(offset: i64, is_input: bool, is_output: bool) -> VarBounds {
+    fn new(offset: i64, var_type: VarType) -> VarBounds {
         VarBounds {
             lowest_ref: offset,
             highest_ref: offset,
             highest_assignment: offset,
-            is_input,
-            is_output,
+            var_type,
         }
     }
 
@@ -63,28 +70,27 @@ impl VarBounds {
 /// Variables that are inputs or outputs will always contain 0 within the closed range \[lowest, highest\].
 ///
 /// Result is given as a hashmap mapping variable names (strings) to `VarBounds` structs.
-fn get_referenced_variables_with_highest_and_lowest_t_offset(
-    tree: &Tree<ASTNode>,
-) -> Result<HashMap<String, VarBounds>, CompileError> {
+fn get_var_bounds(tree: &Tree<ASTNode>) -> Result<HashMap<String, VarBounds>, CompileError> {
     //A list of all the variables and their t-offsets. If the variable has only been declared (neither referenced or assigned), then the t-offset will be `None`
-    //Reminder: a positive t-offset represents [t-n] and a negative represents [t+n]
+    //Reminder: a positive t-offset represents [t+n] and a negative represents [t-n]
     let mut variables: HashMap<String, Option<VarBounds>> = HashMap::new();
 
+    //A closure taking information about a var reference and inserting that data into `variables` if needed
     let insert = |var_id: String,
                   nodeid: NodeId,
                   offset: i64,
                   is_assignment: bool,
                   variables: &mut HashMap<String, Option<VarBounds>>|
-     -> Result<_, CompileError> {
-        if let Some(current_t) = variables.get_mut(&var_id) {
+     -> Result<(), CompileError> {
+        if let Some(bounds_opt) = variables.get_mut(&var_id) {
             // Update the stored bounds with this new offset
-            if let Some(bounds) = current_t {
+            if let Some(bounds) = bounds_opt {
                 bounds.update(offset);
                 if is_assignment {
                     bounds.update_assignment(offset);
                 }
             } else {
-                let mut new = VarBounds::new(offset, false, false);
+                let mut new = VarBounds::new(offset, VarType::Local);
                 if is_assignment {
                     new.update_assignment(offset)
                 }
@@ -107,10 +113,10 @@ fn get_referenced_variables_with_highest_and_lowest_t_offset(
             } => {
                 // I/O variables are guaranteed a reference at offset 0
                 for (_t, name) in in_values {
-                    variables.insert(name.clone(), Some(VarBounds::new(0, true, false)));
+                    variables.insert(name.clone(), Some(VarBounds::new(0, VarType::Input)));
                 }
                 for (_t, name) in out_values {
-                    variables.insert(name.clone(), Some(VarBounds::new(0, true, false)));
+                    variables.insert(name.clone(), Some(VarBounds::new(0, VarType::Output)));
                 }
             }
             ASTNodeType::VariableReference {
@@ -254,8 +260,7 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
 
         //Stores pairs of (variable ID, (highest used t-offset, lowest used t-offset))
         //This is needed to create the registers
-        let variables: HashMap<String, VarBounds> =
-            get_referenced_variables_with_highest_and_lowest_t_offset(tree)?;
+        let variables: HashMap<String, VarBounds> = get_var_bounds(tree)?;
 
         let mut v_tree = Tree::new();
 
