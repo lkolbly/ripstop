@@ -6,6 +6,8 @@ use std::{
 #[derive(Debug, Clone)]
 pub enum TreeError {
     NodeNotFound { node_id: NodeId },
+    ChildrenExpected { node_id: NodeId },
+    ChildNotFound { node_id: NodeId, child_index: usize },
 }
 
 //PROBLEM?: We don't know where the head of the tree is
