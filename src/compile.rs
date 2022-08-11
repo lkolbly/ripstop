@@ -93,7 +93,7 @@ fn verify(tree: &Tree<ASTNode>, variables: HashMap<String, VarBounds>) -> Result
                     };
 
                     match &this_node.data.node_type {
-                        ASTNodeType::VariableReference { var_id, t_offset } => todo!(),
+                        ASTNodeType::VariableReference { var_id } => todo!(),
                         ASTNodeType::BitwiseInverse => todo!(),
                         ASTNodeType::Add => todo!(),
                         ASTNodeType::Subtract => todo!(),
