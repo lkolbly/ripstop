@@ -1,4 +1,4 @@
-use crate::parse::Rule;
+use crate::parse::{NumberLiteral, Rule};
 use pest::iterators::Pair;
 
 #[derive(Debug, Clone)]
@@ -76,7 +76,12 @@ pub enum ASTNodeType {
     //my_var[t + 10] =x> this doesn't work, can't reference a future clock value
     VariableReference {
         var_id: String,
-        t_offset: i64,
+    },
+    TimeOffsetRelative {
+        offset: i64,
+    },
+    TimeOffsetAbsolute {
+        time: i64,
     },
     //Unary operators only have one child
     //Maybe extract operators into their own enum of sorts (or maybe just unary/binary ops)? Might not be helpful though

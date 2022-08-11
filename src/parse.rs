@@ -47,7 +47,32 @@ pub fn parse(toparse: &str) -> Tree<ASTNode> {
             Rule::assignment => Some(ASTNodeType::Assign),
             Rule::indexed_variable => Some(ASTNodeType::VariableReference {
                 var_id: inner_rules.next().unwrap().as_str().to_string(),
-                t_offset: parse_t_offset(inner_rules.next().unwrap()),
+            }),
+            Rule::variable_index_relative => Some(ASTNodeType::TimeOffsetRelative {
+                offset: {
+                    match inner_rules.next() {
+                        Some(inner) => {
+                            let sign = match inner.as_rule() {
+                                Rule::addition => 1,
+                                Rule::subtraction => -1,
+                                _ => unreachable!(),
+                            };
+                            let unsigned: i64 =
+                                NumberLiteral::from_tree(inner_rules.next().unwrap())
+                                    .value
+                                    .try_into()
+                                    .unwrap();
+                            sign * unsigned
+                        }
+                        None => 0,
+                    }
+                },
+            }),
+            Rule::variable_index_absolute => Some(ASTNodeType::TimeOffsetAbsolute {
+                time: NumberLiteral::from_tree(inner_rules.next().unwrap())
+                    .value
+                    .try_into()
+                    .unwrap(),
             }),
             Rule::unary_operation => Some(
                 match inner_rules
@@ -129,28 +154,12 @@ pub fn parse(toparse: &str) -> Tree<ASTNode> {
             _ => unreachable!(),
         }
     }
-
-    fn parse_t_offset(pair: Pair<Rule>) -> i64 {
-        let mut inner_rules = pair.into_inner();
-        let sign = match inner_rules.next() {
-            Some(sign_pair) => match sign_pair.as_rule() {
-                Rule::addition => 1,
-                Rule::subtraction => -1,
-                _ => unreachable!(),
-            },
-            None => {
-                return 0;
-            }
-        };
-        let int: i64 = inner_rules.next().unwrap().as_str().parse().unwrap();
-        sign * int
-    }
 }
 
-#[derive(Debug, PartialEq)]
-struct NumberLiteral {
-    size_bits: usize,
-    value: u128, // This is the maximum supported integer literal
+#[derive(Clone, Debug, PartialEq)]
+pub struct NumberLiteral {
+    pub size_bits: usize,
+    pub value: u128, // This is the maximum supported integer literal
 }
 
 impl NumberLiteral {
