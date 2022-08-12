@@ -362,7 +362,7 @@ fn compile_expression(
             if let Some(var_ref_subtree_bottom) = &mut var_ref_subtree_bottom {
                 *var_ref_subtree_bottom += vast
                     .append_tree(vnode, &mut var_ref_subtree)
-                    .map_err(|err| CompileError::TreeError { err })?;
+                    .map_err(|err| CompileError::from(err))?;
             }
 
             Ok(var_ref_subtree_bottom)
@@ -399,7 +399,7 @@ fn compile_expression(
 /// Compiles the supplied VariableReference into a suitable Verilog subtree
 ///
 /// Some notes:
-/// * if `add_implicit_index == true`, then and index will be added above the variable reference *only* if there is none already
+/// * if `add_implicit_index == true`, then an index will be added above the variable reference *only* if there is none already
 /// * if `var_ref` is not actually a `VariableReference`, then an `InvalidNodeTypes` error will be raised on `var_ref`
 fn compile_var_ref(
     ast: &Tree<ASTNode>,
@@ -479,6 +479,34 @@ fn compile_var_ref(
             nodes: vec![ast[var_ref].data.clone()],
         })
     }
+}
+
+/// Compiles the supplied VariableReference into a suitable Verilog subtree without information from the ast itself other than the variable name .
+/// This makes it significantly more primative while still being suitable for some applications
+///
+/// Some notes:
+/// * if `index` is a variant of `VNode` other than `VNode::Index {..}`, this method has undefined behavior
+fn compile_var_ref_from_string(
+    var_id: &str,
+    t_offset: Option<i64>,
+    index: Option<VNode>,
+) -> Result<Tree<VNode>, TreeError> {
+    let mut tree = Tree::new();
+
+    //Creating the `VariableReference`
+    let var_id = match t_offset {
+        Some(offset) => variable_name_relative(var_id, offset),
+        None => var_id.to_string(),
+    };
+    let var_ref = tree.new_node(VNode::VariableReference { var_id: var_id });
+
+    //Creating the index if needed
+    if let Some(idx) = index {
+        let idx = tree.new_node(idx);
+        tree.append_to(idx, var_ref)?;
+    }
+
+    Ok(tree)
 }
 
 #[derive(Clone)]
@@ -662,26 +690,45 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
         }
 
         for (name, offsets) in variables.clone().into_iter() {
+            //Create the possible index for this node for use with `compile_var_ref_from_string`
+            let index = match offsets.var_type {
+                Type::Bits { size } => Some(VNode::Index {
+                    high: size - 1,
+                    low: 0,
+                }),
+                _ => None,
+            };
+
             // Assign indexed variables to their input/output counterparts
             if ins_and_outs.contains(&name) {
-                let assign_no_index = v_tree.new_node(VNode::VariableReference {
+                let (mut assign_no_index_tree, mut assign_index_0_tree) = {
+                    (
+                        compile_var_ref_from_string(&name, None, index.clone())?,
+                        compile_var_ref_from_string(&name, Some(0), index.clone())?,
+                    )
+                };
+                /*let assign_no_index = v_tree.new_node(VNode::VariableReference {
                     var_id: name.to_string(),
                 });
                 let assign_index_0 = v_tree.new_node(VNode::VariableReference {
                     var_id: variable_name_relative(&name, 0),
-                });
+                });*/
                 let assign_node = v_tree.new_node(VNode::AssignKeyword {});
 
                 if out_values.contains(&name) {
                     // Assign index 0 to actual variable (only necessary if variable is an output):
                     // assign out = out_0;
-                    v_tree.append_to(assign_node, assign_no_index)?;
-                    v_tree.append_to(assign_node, assign_index_0)?;
+                    v_tree.append_tree(assign_node, &mut assign_no_index_tree)?;
+                    v_tree.append_tree(assign_node, &mut assign_index_0_tree)?;
+                    /*v_tree.append_to(assign_node, assign_no_index)?;
+                    v_tree.append_to(assign_node, assign_index_0)?;*/
                 } else {
                     // The opposite is necessary for inputs:
                     // assign in_0 = in;
-                    v_tree.append_to(assign_node, assign_index_0)?;
-                    v_tree.append_to(assign_node, assign_no_index)?;
+                    v_tree.append_tree(assign_node, &mut assign_index_0_tree)?;
+                    v_tree.append_tree(assign_node, &mut assign_no_index_tree)?;
+                    /*v_tree.append_to(assign_node, assign_index_0)?;
+                    v_tree.append_to(assign_node, assign_no_index)?;*/
                 }
 
                 v_tree.append_to(head, assign_node)?;
@@ -693,16 +740,12 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
             // var_1 <= var_2;
             // etc.
             for i in offsets.lowest_ref..offsets.highest_ref {
-                let lhs = v_tree.new_node(VNode::VariableReference {
-                    var_id: variable_name_relative(&name, i),
-                });
-                let rhs = v_tree.new_node(VNode::VariableReference {
-                    var_id: variable_name_relative(&name, i + 1),
-                });
+                let mut lhs = compile_var_ref_from_string(&name, Some(i), index.clone())?;
+                let mut rhs = compile_var_ref_from_string(&name, Some(i + 1), index.clone())?;
                 let reg_assign = v_tree.new_node(VNode::ClockAssign {});
 
-                v_tree.append_to(reg_assign, lhs)?;
-                v_tree.append_to(reg_assign, rhs)?;
+                v_tree.append_tree(reg_assign, &mut lhs)?;
+                v_tree.append_tree(reg_assign, &mut rhs)?;
                 v_tree.append_to(clock_edge, reg_assign)?;
             }
         }
@@ -714,23 +757,73 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
             let child_node = tree.get_node(*c).unwrap();
             match child_node.data.node_type {
                 ASTNodeType::Assign => {
+                    //`lhs` is the ID of the left-hand-side's `ASTNode::VariableReference`
+                    //`lhs_index` is the ID of the left-hand-side's `VNode::Index` which has been added to `v_tree` regardless of its existence in `tree`
                     let (lhs, lhs_index) = {
                         let mut lhs = child_node.children.as_ref().unwrap()[0];
 
-                        let mut lhs_index = None;
-                        //If the lhs is an index, set `lhs` to the variable reference and add the index
-                        if let ASTNodeType::Index { high, low } =
-                            &tree.get_node(lhs).unwrap().data.node_type
-                        {
-                            let idx = v_tree.new_node(VNode::Index {
-                                high: *high,
-                                low: *low,
-                            });
-                            lhs_index = Some(idx);
-                            lhs = tree[lhs].children.as_ref().unwrap()[0];
-                        }
+                        let lhs_index = {
+                            //If the lhs is an index, set `lhs` to the variable reference and add the index
+                            //If the lhs is *not* an index (and is a var reference), then add an index above it using `VarBounds` for default values
+                            //BUT, only add an index if the type is indexable
+                            let lhs_node_type = &tree[lhs].data.node_type;
+                            if let ASTNodeType::Index { high, low } = lhs_node_type {
+                                let idx = v_tree.new_node(VNode::Index {
+                                    high: *high,
+                                    low: *low,
+                                });
+                                lhs = tree[lhs].children.as_ref().unwrap()[0];
+                                Some(idx)
+                            } else if let ASTNodeType::VariableReference { var_id } = lhs_node_type
+                            {
+                                let bounds = &variables[var_id];
+                                match bounds.var_type {
+                                    Type::Bits { size } => {
+                                        let idx = v_tree.new_node(VNode::Index {
+                                            high: size - 1,
+                                            low: 0,
+                                        });
+                                        Some(idx)
+                                    }
+                                    _ => None,
+                                }
+                            } else {
+                                unreachable!()
+                            }
+                        };
 
                         (lhs, lhs_index)
+
+                        /*//Note: an explicit index should always exist if it's of type `bits<n>`
+                        //That is, it doesn't need to be user supplied but should customarily be added by the compiler in this step
+
+                        let mut lhs = child_node.children.as_ref().unwrap()[0];
+
+                        {
+                            let lhs_node = tree.get_node(lhs)?;
+
+                            //If the lhs is an index, set `lhs` to the variable reference instead
+                            if let ASTNodeType::Index { high, low } = lhs_node.data.node_type {
+                                lhs = lhs_node.children.as_ref().unwrap()[0];
+                            }
+                        }
+
+                        //Now, create the var ref subtree and append it
+                        if let ASTNodeType::VariableReference { var_id } = tree[lhs].data.node_type
+                        {
+                            let mut lhs_subtree =
+                                compile_var_ref(tree, lhs, &variables, true, true)?;
+
+                            //Since there's always an index, `lhs_index` should always be the same as the head of `lhs_subtree`
+                            let mut lhs_index = lhs_subtree.find_head();
+                            v_tree.append_tree()
+
+                            (lhs, lhs_index)
+                        } else {
+                            return Err(CompileError::InvalidNodeTypes {
+                                nodes: vec![tree[lhs].data.clone()],
+                            });
+                        }*/
                     };
 
                     let rhs = child_node.children.as_ref().unwrap()[1];
@@ -763,7 +856,8 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
                     let lhs_vnode = {
                         let mut lhs_vnode = v_tree.new_node(VNode::VariableReference {
                             var_id: lhs_name.to_string(),
-                        }); //If the lhs had an index above it created in v_tree, append lhs_vnode properly
+                        });
+                        //If the lhs had an index above it created in v_tree, append lhs_vnode properly
                         if let Some(idx) = lhs_index {
                             v_tree.append_to(idx, lhs_vnode)?;
                             lhs_vnode = idx;
@@ -808,6 +902,6 @@ fn variable_name(var_id: &String, tree: &Tree<ASTNode>, offset_id: NodeId) -> St
     }
 }
 
-fn variable_name_relative(var_id: &String, index: i64) -> String {
+fn variable_name_relative(var_id: &str, index: i64) -> String {
     format!("{}_{}", var_id, index.to_string().replace('-', "neg"))
 }
