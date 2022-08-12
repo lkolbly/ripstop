@@ -1,0 +1,6 @@
+[book]
+authors = ["Lane Kolbly"]
+language = "en"
+multilingual = false
+src = "src"
+title = "Ripstop HDL"
