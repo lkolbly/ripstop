@@ -115,7 +115,7 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
             let vars = children
                 .unwrap()
                 .iter()
-                .map(|n| verilog_ast_to_string(*n, tree, num_whitespace))
+                .map(|n| verilog_ast_to_string(*n, tree, 0))
                 .collect::<Vec<_>>();
 
             format!("{whitespace}reg {};", vars.join(", "))
