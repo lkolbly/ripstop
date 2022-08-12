@@ -423,201 +423,201 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
     //A little bit of a workaround in order to make this work well with the ? operator
     let head = tree.find_head().ok_or(CompileError::CouldNotFindASTHead)?;
 
-    if let ASTNodeType::ModuleDeclaration {
-        id,
-        in_values,
-        out_values,
-    } = &tree[head].data.node_type
-    {
-        //Stores pairs of (variable ID, (highest used t-offset, lowest used t-offset))
-        //This is needed to create the registers
-        let variables: HashMap<String, VarBounds> = get_var_bounds(tree)?;
+    let (id, in_values, out_values) = match &tree[head].data.node_type {
+        ASTNodeType::ModuleDeclaration {
+            id,
+            in_values,
+            out_values,
+        } => (id, in_values, out_values),
+        _ => {
+            panic!("Tried to compile module which wasn't of type Node::ModuleDeclaration");
+        }
+    };
 
-        //Before creating the tree, verify it
-        verify(tree, &variables)?;
+    //Stores pairs of (variable ID, (highest used t-offset, lowest used t-offset))
+    //This is needed to create the registers
+    let variables: HashMap<String, VarBounds> = get_var_bounds(tree)?;
 
-        //Creating the Verilog AST can now officially begin
+    //Before creating the tree, verify it
+    verify(tree, &variables)?;
 
-        let mut in_values: Vec<String> = in_values.iter().map(|pair| pair.1.clone()).collect();
-        let out_values: Vec<String> = out_values.iter().map(|pair| pair.1.clone()).collect();
+    //Creating the Verilog AST can now officially begin
 
-        in_values.push("rst".to_string());
-        in_values.push("clk".to_string());
+    let mut in_values: Vec<String> = in_values.iter().map(|pair| pair.1.clone()).collect();
+    let out_values: Vec<String> = out_values.iter().map(|pair| pair.1.clone()).collect();
 
-        let mut ins_and_outs: Vec<String> = Vec::new();
-        ins_and_outs.append(&mut in_values.clone());
-        ins_and_outs.append(&mut out_values.clone());
+    in_values.push("rst".to_string());
+    in_values.push("clk".to_string());
 
-        let mut v_tree = Tree::new();
+    let mut ins_and_outs: Vec<String> = Vec::new();
+    ins_and_outs.append(&mut in_values.clone());
+    ins_and_outs.append(&mut out_values.clone());
 
-        //Create the head of the tree, a module declaration
-        //rst and clk are always included as inputs in `v_tree`, but not `tree`
-        let v_head = {
-            v_tree.new_node(VNode::ModuleDeclaration {
-                id: id.clone(),
-                in_values: in_values.clone(),
-                out_values: out_values.clone(),
-            })
-        };
+    let mut v_tree = Tree::new();
 
-        // Contains tuples of (registsred name, variable name)
-        let registers: Vec<(String, String)> = variables
-            .clone()
-            .into_iter()
-            // Map each variable to its name with index (var_0, var_1, etc.), using flat_map to collect all values
-            .flat_map(|var| {
-                (var.1.lowest_ref..(var.1.highest_ref + 1))
-                    .map(move |i| (variable_name_relative(&var.0, i), var.0.to_owned()))
-            })
-            .collect();
+    //Create the head of the tree, a module declaration
+    //rst and clk are always included as inputs in `v_tree`, but not `tree`
+    let v_head = {
+        v_tree.new_node(VNode::ModuleDeclaration {
+            id: id.clone(),
+            in_values: in_values.clone(),
+            out_values: out_values.clone(),
+        })
+    };
 
-        // Create a VNode to hold things that occur at the positive clock edge (i.e. always @(posedge clk))
-        let clock_edge = v_tree.new_node(VNode::AlwaysBegin {
-            trigger: AlwaysBeginTriggerType::Posedge,
-        });
+    // Contains tuples of (registered name, variable name)
+    let registers: Vec<(String, String)> = variables
+        .clone()
+        .into_iter()
+        // Map each variable to its name with index (var_0, var_1, etc.), using flat_map to collect all values
+        .flat_map(|var| {
+            (var.1.lowest_ref..(var.1.highest_ref + 1))
+                .map(move |i| (variable_name_relative(&var.0, i), var.0.to_owned()))
+        })
+        .collect();
 
-        //Register chain creation for each variable
-        if !registers.is_empty() {
-            let reg_chain = VNode::RegisterDeclare {};
-            let reg_chain = v_tree.new_node(reg_chain);
-            v_tree.append_to(v_head, reg_chain)?;
+    // Create a VNode to hold things that occur at the positive clock edge (i.e. always @(posedge clk))
+    let clock_edge = v_tree.new_node(VNode::AlwaysBegin {
+        trigger: AlwaysBeginTriggerType::Posedge,
+    });
 
-            // Add all the registers to the chain. If the register is an array (as of now, bits<n>), create an Index above the VariableReference
-            for (reg, variable_name) in registers {
-                let var_node = VNode::VariableReference {
-                    var_id: reg.clone(),
-                };
-                let reg_head = {
-                    let var = v_tree.new_node(var_node);
-                    println!("Reg name: {} {}\nCurrent `variables`: {:?}", reg, variable_name, variables);
+    //Register chain creation for each variable
+    if !registers.is_empty() {
+        let reg_chain = VNode::RegisterDeclare {};
+        let reg_chain = v_tree.new_node(reg_chain);
+        v_tree.append_to(v_head, reg_chain)?;
 
-                    match variables[&variable_name].var_type {
-                        Type::Bits { size } => {
-                            let index_node = v_tree.new_node(VNode::Index { high: size, low: 0 });
-                            v_tree.append_to(index_node, var)?;
-                            index_node
-                        }
-                        _ => var,
+        // Add all the registers to the chain. If the register is an array (as of now, bits<n>), create an Index above the VariableReference
+        for (reg, variable_name) in registers {
+            let var_node = VNode::VariableReference {
+                var_id: reg.clone(),
+            };
+            let reg_head = {
+                let var = v_tree.new_node(var_node);
+                println!(
+                    "Reg name: {} {}\nCurrent `variables`: {:?}",
+                    reg, variable_name, variables
+                );
+
+                match variables[&variable_name].var_type {
+                    Type::Bits { size } => {
+                        let index_node = v_tree.new_node(VNode::Index { high: size, low: 0 });
+                        v_tree.append_to(index_node, var)?;
+                        index_node
                     }
-                };
-
-                v_tree.append_to(reg_chain, reg_head)?;
-            }
-
-            for (name, offsets) in variables.clone().into_iter() {
-                // Assign indexed variables to their input/output counterparts
-                if ins_and_outs.contains(&name) {
-                    let assign_no_index = v_tree.new_node(VNode::VariableReference {
-                        var_id: name.to_string(),
-                    });
-                    let assign_index_0 = v_tree.new_node(VNode::VariableReference {
-                        var_id: variable_name_relative(&name, 0),
-                    });
-                    let assign_node = v_tree.new_node(VNode::AssignKeyword {});
-
-                    if out_values.contains(&name) {
-                        // Assign index 0 to actual variable (only necessary if variable is an output):
-                        // assign out = out_0;
-                        v_tree.append_to(assign_node, assign_no_index)?;
-                        v_tree.append_to(assign_node, assign_index_0)?;
-                    } else {
-                        // The opposite is necessary for inputs:
-                        // assign in_0 = in;
-                        v_tree.append_to(assign_node, assign_index_0)?;
-                        v_tree.append_to(assign_node, assign_no_index)?;
-                    }
-
-                    v_tree.append_to(head, assign_node)?;
+                    _ => var,
                 }
+            };
 
-                // Chaining:
-                // var_neg1 <= var_0;
-                // var_0 <= var_1;
-                // var_1 <= var_2;
-                // etc.
-                for i in offsets.lowest_ref..offsets.highest_ref {
-                    let lhs = v_tree.new_node(VNode::VariableReference {
-                        var_id: variable_name_relative(&name, i),
-                    });
-                    let rhs = v_tree.new_node(VNode::VariableReference {
-                        var_id: variable_name_relative(&name, i + 1),
-                    });
-                    let reg_assign = v_tree.new_node(VNode::ClockAssign {});
-
-                    v_tree.append_to(reg_assign, lhs)?;
-                    v_tree.append_to(reg_assign, rhs)?;
-                    v_tree.append_to(clock_edge, reg_assign)?;
-                }
-            }
+            v_tree.append_to(reg_chain, reg_head)?;
         }
 
-        //User-defined logic compilation (uses the compile_expression function when encountering an expression)
-        if let Some(children) = &tree[head].children {
-            for c in children {
-                let child_node = tree.get_node(*c).unwrap();
-                match child_node.data.node_type {
-                    ASTNodeType::Assign => {
-                        let lhs = child_node.children.as_ref().unwrap()[0];
-                        let rhs = child_node.children.as_ref().unwrap()[1];
+        for (name, offsets) in variables.clone().into_iter() {
+            // Assign indexed variables to their input/output counterparts
+            if ins_and_outs.contains(&name) {
+                let assign_no_index = v_tree.new_node(VNode::VariableReference {
+                    var_id: name.to_string(),
+                });
+                let assign_index_0 = v_tree.new_node(VNode::VariableReference {
+                    var_id: variable_name_relative(&name, 0),
+                });
+                let assign_node = v_tree.new_node(VNode::AssignKeyword {});
 
-                        let lhs_name = match &tree.get_node(lhs).unwrap().data.node_type {
-                            ASTNodeType::VariableReference { var_id } => {
-                                if in_values.contains(var_id) {
-                                    return Err(CompileError::InputAssignment {
+                if out_values.contains(&name) {
+                    // Assign index 0 to actual variable (only necessary if variable is an output):
+                    // assign out = out_0;
+                    v_tree.append_to(assign_node, assign_no_index)?;
+                    v_tree.append_to(assign_node, assign_index_0)?;
+                } else {
+                    // The opposite is necessary for inputs:
+                    // assign in_0 = in;
+                    v_tree.append_to(assign_node, assign_index_0)?;
+                    v_tree.append_to(assign_node, assign_no_index)?;
+                }
+
+                v_tree.append_to(head, assign_node)?;
+            }
+
+            // Chaining:
+            // var_neg1 <= var_0;
+            // var_0 <= var_1;
+            // var_1 <= var_2;
+            // etc.
+            for i in offsets.lowest_ref..offsets.highest_ref {
+                let lhs = v_tree.new_node(VNode::VariableReference {
+                    var_id: variable_name_relative(&name, i),
+                });
+                let rhs = v_tree.new_node(VNode::VariableReference {
+                    var_id: variable_name_relative(&name, i + 1),
+                });
+                let reg_assign = v_tree.new_node(VNode::ClockAssign {});
+
+                v_tree.append_to(reg_assign, lhs)?;
+                v_tree.append_to(reg_assign, rhs)?;
+                v_tree.append_to(clock_edge, reg_assign)?;
+            }
+        }
+    }
+
+    //User-defined logic compilation (uses the compile_expression function when encountering an expression)
+    if let Some(children) = &tree[head].children {
+        for c in children {
+            let child_node = tree.get_node(*c).unwrap();
+            match child_node.data.node_type {
+                ASTNodeType::Assign => {
+                    let lhs = child_node.children.as_ref().unwrap()[0];
+                    let rhs = child_node.children.as_ref().unwrap()[1];
+
+                    let lhs_name = match &tree.get_node(lhs).unwrap().data.node_type {
+                        ASTNodeType::VariableReference { var_id } => {
+                            if in_values.contains(var_id) {
+                                return Err(CompileError::InputAssignment {
+                                    context: tree.get_node(lhs).unwrap().data.context.clone(),
+                                });
+                            }
+                            let t_offset = tree.get_first_child(lhs)?;
+                            if let ASTNodeType::TimeOffsetRelative { offset } =
+                                t_offset.data.node_type
+                            {
+                                if offset < 0 {
+                                    return Err(CompileError::AssignmentInPast {
                                         context: tree.get_node(lhs).unwrap().data.context.clone(),
                                     });
                                 }
-                                let t_offset = tree.get_first_child(lhs)?;
-                                if let ASTNodeType::TimeOffsetRelative { offset } =
-                                    t_offset.data.node_type
-                                {
-                                    if offset < 0 {
-                                        return Err(CompileError::AssignmentInPast {
-                                            context: tree
-                                                .get_node(lhs)
-                                                .unwrap()
-                                                .data
-                                                .context
-                                                .clone(),
-                                        });
-                                    }
-                                }
-                                variable_name(var_id, &*tree, t_offset.id)
                             }
-                            _ => unreachable!(),
-                        };
-                        let lhs_vnode = v_tree.new_node(VNode::VariableReference {
-                            var_id: lhs_name.to_string(),
-                        });
+                            variable_name(var_id, &*tree, t_offset.id)
+                        }
+                        _ => unreachable!(),
+                    };
+                    let lhs_vnode = v_tree.new_node(VNode::VariableReference {
+                        var_id: lhs_name.to_string(),
+                    });
 
-                        // For now, only use the assign keyword for assignments.
-                        let assign_vnode = v_tree.new_node(VNode::AssignKeyword {});
-                        v_tree.append_to(head, assign_vnode)?;
+                    // For now, only use the assign keyword for assignments.
+                    let assign_vnode = v_tree.new_node(VNode::AssignKeyword {});
+                    v_tree.append_to(head, assign_vnode)?;
 
-                        v_tree.append_to(assign_vnode, lhs_vnode)?;
+                    v_tree.append_to(assign_vnode, lhs_vnode)?;
 
-                        compile_expression(tree, rhs, &mut v_tree, assign_vnode, &variables)?;
-                    }
-                    ASTNodeType::VariableDeclaration {
-                        var_type: _,
-                        var_id: _,
-                    } => {}
-                    _ => unreachable!(),
+                    compile_expression(tree, rhs, &mut v_tree, assign_vnode, &variables)?;
                 }
+                ASTNodeType::VariableDeclaration {
+                    var_type: _,
+                    var_id: _,
+                } => {}
+                _ => unreachable!(),
             }
-        } else {
-            println!("Module {} has no children", id);
         }
-
-        // Add the @(posedge clk) block if it's non-empty
-        if v_tree.get_node(clock_edge).unwrap().children.is_some() {
-            v_tree.append_to(v_head, clock_edge)?;
-        }
-
-        Ok(v_tree)
     } else {
-        panic!("Tried to compile module which wasn't of type Node::ModuleDeclaration");
+        println!("Module {} has no children", id);
     }
+
+    // Add the @(posedge clk) block if it's non-empty
+    if v_tree.get_node(clock_edge).unwrap().children.is_some() {
+        v_tree.append_to(v_head, clock_edge)?;
+    }
+
+    Ok(v_tree)
 }
 
 /// Generate a Verilog variable name for the variable `var_id` at the index given by the node at `offset_id` on `tree`.
