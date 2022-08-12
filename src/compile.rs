@@ -503,7 +503,7 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
                     reg, variable_name, timespec, variables
                 );
 
-                match variables[&reg.base_name].var_type {
+                match variables[&variable_name].var_type {
                     Type::Bits { size } => {
                         let index_node = v_tree.new_node(VNode::Index {
                             high: size - 1,

@@ -114,11 +114,11 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
             format!("module {id} (\n{all_values_string}\n);\n{children_string}\nendmodule")
         }
         VNode::RegisterDeclare {} => {
-            let vars = children
-                .unwrap()
-                .iter()
-                .map(|n| verilog_ast_to_string(*n, tree, 0))
-                .collect::<Vec<_>>();
+            if let Some(children) = children {
+                let vars = children
+                    .iter()
+                    .map(|n| verilog_ast_to_string(*n, tree, 0))
+                    .collect::<Vec<_>>();
 
                 format!("{whitespace}reg {};", vars.join(", "))
             } else {
@@ -129,7 +129,7 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
             if let Some(children) = children {
                 let vars = children
                     .iter()
-                    .map(|n| verilog_ast_to_string(*n, tree, num_whitespace))
+                    .map(|n| verilog_ast_to_string(*n, tree, 0))
                     .collect::<Vec<_>>();
 
                 format!("{whitespace}wire {};", vars.join(", "))
