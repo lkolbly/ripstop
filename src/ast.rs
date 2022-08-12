@@ -100,11 +100,14 @@ pub enum ASTNodeType {
     },
     //Some examples of generated VariableReferences:
     //my_var[t] => var_id: "my_var", t_offset: 0
-    //my_var[t - 10] => var_id: "my_var", t_offset: 10
-    //var_with_num8ers[t-2] => var_id: "var_with_num8ers", t_offset: 2
-    //my_var[t + 10] =x> this doesn't work, can't reference a future clock value
+    //my_var[t - 10] => var_id: "my_var", t_offset: -10
+    //var_with_num8ers[t-2] => var_id: "var_with_num8ers", t_offset: -2
     VariableReference {
         var_id: String,
+    },
+    Index {
+        high: usize,
+        low: usize,
     },
     TimeOffsetRelative {
         offset: i64,
@@ -112,6 +115,7 @@ pub enum ASTNodeType {
     TimeOffsetAbsolute {
         time: i64,
     },
+
     //Unary operators only have one child
     //Maybe extract operators into their own enum of sorts (or maybe just unary/binary ops)? Might not be helpful though
     BitwiseInverse,

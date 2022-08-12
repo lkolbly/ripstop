@@ -103,6 +103,25 @@ fn verify(
                             let bounds = &variables[var_id];
                             Ok(bounds.var_type)
                         }
+                        //Indexing restricts the type and only works on arrays/bits<n> when `n >= high >= low >= 0`. Due to type limits, `low >= 0` is guaranteed
+                        ASTNodeType::Index { high, low } => {
+                            if let Type::Bits { size } = child_vals[0] {
+                                if low > high || *high > size {
+                                    Err(CompileError::IndexOutOfBounds {
+                                        context: this_node.data.context.clone(),
+                                    })
+                                } else {
+                                    Ok(Type::Bits {
+                                        size: high - low + 1,
+                                    })
+                                }
+                            } else {
+                                Err(CompileError::CannotIndexType {
+                                    context: this_node.data.context.clone(),
+                                    invalid_type: child_vals[0],
+                                })
+                            }
+                        }
                         //Unary operators don't need to worry about type matching and transformation
                         ASTNodeType::BitwiseInverse => Ok(child_vals[0]),
                         //Binary operators require valid types, and theoretically this could allow for different types on each side
@@ -303,41 +322,70 @@ fn get_var_bounds(tree: &Tree<ASTNode>) -> Result<HashMap<String, VarBounds>, Co
 
 fn compile_expression(
     ast: &Tree<ASTNode>,
+    //The current node in `ast` used to generate a subtree for `vast`
     node: NodeId,
     vast: &mut Tree<VNode>,
+    //The node in `vast` to append the generated subtree to
     vnode: NodeId,
     variables: &HashMap<String, VarBounds>,
 ) -> Result<(), CompileError> {
-    let new_node_data = match &ast.get_node(node).unwrap().data.node_type {
-        ASTNodeType::VariableReference { var_id } => {
-            let bounds = variables.get(var_id).unwrap();
+    /// Adds a new node to `vast` with the given parent and returns the node's id
+    fn add_node(
+        vast: &mut Tree<VNode>,
+        node: VNode,
+        parent: Option<NodeId>,
+    ) -> Result<Option<NodeId>, CompileError> {
+        let node = vast.new_node(node);
+        if let Some(parent) = parent {
+            vast.append_to(parent, node)?;
+        }
 
-            // Get t-offset
-            let t_offset_node = ast.get_first_child(node).unwrap();
-            let t_offset = &t_offset_node.data.node_type;
+        Ok(Some(node))
+    }
 
-            // Ensure t-offset is not greater than the highest t-offset at which this variable is assigned
-            if let ASTNodeType::TimeOffsetRelative { offset } = t_offset {
-                if offset > &bounds.highest_assignment {
-                    return Err(CompileError::ReferenceAfterAssignment {
-                        context: ast.get_node(node).unwrap().data.context.clone(),
-                    });
+    // The parent of this node's compiled children. If multiple VNodes are generated from one ASTNode, then this is the node where children are attached
+    let new_vnode = match &ast.get_node(node).unwrap().data.node_type {
+        ASTNodeType::VariableReference { var_id: _ } => {
+            //First, generate the subtree with both a t offset and implicit index enabled
+            let mut var_ref_subtree = compile_var_ref(ast, node, variables, true, true)?;
+
+            //The bottom of the subtree, where the children of this node will be added
+            let mut var_ref_subtree_bottom = None;
+            for n in &var_ref_subtree {
+                if let None = var_ref_subtree[n].children {
+                    var_ref_subtree_bottom = Some(n);
+                    break;
                 }
             }
-            Some(VNode::VariableReference {
-                var_id: variable_name(var_id, ast, ast.get_first_child(node).unwrap().id),
-            })
+
+            //Finally, append the generated subtree to `vast` and apply the offset accordingly
+            if let Some(var_ref_subtree_bottom) = &mut var_ref_subtree_bottom {
+                *var_ref_subtree_bottom += vast
+                    .append_tree(vnode, &mut var_ref_subtree)
+                    .map_err(|err| CompileError::TreeError { err })?;
+            }
+
+            Ok(var_ref_subtree_bottom)
         }
-        ASTNodeType::BitwiseInverse => Some(VNode::BitwiseInverse {}),
-        ASTNodeType::Add => Some(VNode::Add {}),
-        ASTNodeType::Subtract => Some(VNode::Subtract {}),
-        ASTNodeType::TimeOffsetRelative { offset: _ } => None,
-        _ => todo!(),
+        ASTNodeType::BitwiseInverse => add_node(vast, VNode::BitwiseInverse {}, Some(vnode)),
+        ASTNodeType::Add => add_node(vast, VNode::Add {}, Some(vnode)),
+        ASTNodeType::Subtract => add_node(vast, VNode::Subtract {}, Some(vnode)),
+        ASTNodeType::TimeOffsetRelative { offset: _ } => Ok(None),
+        ASTNodeType::Index { high, low } => add_node(
+            vast,
+            VNode::Index {
+                high: *high,
+                low: *low,
+            },
+            Some(vnode),
+        ),
+        _ => unimplemented!(),
     };
 
-    if let Some(vnode_data) = new_node_data {
-        let new_vnode = vast.new_node(vnode_data);
-        vast.append_to(vnode, new_vnode)?;
+    let new_vnode = new_vnode?;
+
+    //Compile all the children expressions
+    if let Some(new_vnode) = new_vnode {
         if let Some(children) = &ast.get_node(node).unwrap().children {
             for child in children {
                 compile_expression(ast, *child, vast, new_vnode, variables)?;
@@ -346,6 +394,91 @@ fn compile_expression(
     }
 
     Ok(())
+}
+
+/// Compiles the supplied VariableReference into a suitable Verilog subtree
+///
+/// Some notes:
+/// * if `add_implicit_index == true`, then and index will be added above the variable reference *only* if there is none already
+/// * if `var_ref` is not actually a `VariableReference`, then an `InvalidNodeTypes` error will be raised on `var_ref`
+fn compile_var_ref(
+    ast: &Tree<ASTNode>,
+    var_ref: NodeId,
+    variables: &HashMap<String, VarBounds>,
+    include_t_offset: bool,
+    add_implicit_index: bool,
+) -> Result<Tree<VNode>, CompileError> {
+    if let ASTNodeType::VariableReference { var_id } = &ast[var_ref].data.node_type {
+        let bounds = variables.get(var_id).unwrap();
+
+        // The var_id adjusted for t-offset if specified
+        let var_id = {
+            if include_t_offset {
+                // Get t-offset
+                let t_offset_node = ast.get_first_child(var_ref).unwrap();
+                let t_offset = &t_offset_node.data.node_type;
+
+                // Ensure t-offset is not greater than the highest t-offset at which this variable is assigned
+                if let ASTNodeType::TimeOffsetRelative { offset } = t_offset {
+                    if offset > &bounds.highest_assignment {
+                        return Err(CompileError::ReferenceAfterAssignment {
+                            context: ast.get_node(var_ref).unwrap().data.context.clone(),
+                        });
+                    }
+                }
+
+                variable_name(var_id, ast, t_offset_node.id)
+            } else {
+                var_id.clone()
+            }
+        };
+
+        let mut vast = Tree::new();
+
+        //The parent of the var ref which will be added to the Verilog AST. By default, this is None and will only change when adding an implicit index
+        let v_var_ref_parent = {
+            if add_implicit_index {
+                if let Some(var_ref_parent) = ast[var_ref].parent {
+                    match &ast[var_ref_parent].data.node_type {
+                        //If the current variable reference is already indexed, no implicit index should be added
+                        ASTNodeType::Index { .. } => None,
+                        //If the current variable reference is not already indexed, add an implicit index.
+                        _ => {
+                            //But, only add an implicit index to array types
+                            match bounds.var_type {
+                                Type::Bits { size } => {
+                                    //Create the index node and add it to the tree
+                                    let idx = vast.new_node(VNode::Index {
+                                        high: size - 1,
+                                        low: 0,
+                                    });
+
+                                    Some(idx)
+                                }
+                                _ => None,
+                            }
+                        }
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        };
+
+        let v_var_ref = vast.new_node(VNode::VariableReference { var_id });
+
+        if let Some(v_var_ref_parent) = v_var_ref_parent {
+            vast.append_to(v_var_ref_parent, v_var_ref)?;
+        }
+
+        Ok(vast)
+    } else {
+        Err(CompileError::InvalidNodeTypes {
+            nodes: vec![ast[var_ref].data.clone()],
+        })
+    }
 }
 
 #[derive(Clone)]
@@ -371,6 +504,13 @@ pub enum CompileError {
         context: StringContext,
         current_type: Type,
         needed_type: Type,
+    },
+    IndexOutOfBounds {
+        context: StringContext,
+    },
+    CannotIndexType {
+        context: StringContext,
+        invalid_type: Type,
     },
     /// When a set of nodes have types which do not make sense in relation to eachother.
     /// For example, this error will be raised when adding a `ModuleDeclaration` to a `VariableReference` and it will contain data for those two nodes
@@ -414,6 +554,8 @@ impl std::fmt::Debug for CompileError {
                 }
                 write!(f, "The following nodes have invalid types given their relationship:\n{}", nodes_string)
             },
+            CompileError::IndexOutOfBounds { context } => include_position(context, "Index out of bounds"),
+            CompileError::CannotIndexType { context, invalid_type } => include_position(context, &format!("Cannot index type {}", invalid_type)),
         }
     }
 }
@@ -498,10 +640,6 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
             };
             let reg_head = {
                 let var = v_tree.new_node(var_node);
-                println!(
-                    "Reg name: {} {} {}\nCurrent `variables`: {:?}",
-                    reg, variable_name, timespec, variables
-                );
 
                 match variables[&variable_name].var_type {
                     Type::Bits { size } => {
@@ -576,16 +714,36 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
             let child_node = tree.get_node(*c).unwrap();
             match child_node.data.node_type {
                 ASTNodeType::Assign => {
-                    let lhs = child_node.children.as_ref().unwrap()[0];
+                    let (lhs, lhs_index) = {
+                        let mut lhs = child_node.children.as_ref().unwrap()[0];
+
+                        let mut lhs_index = None;
+                        //If the lhs is an index, set `lhs` to the variable reference and add the index
+                        if let ASTNodeType::Index { high, low } =
+                            &tree.get_node(lhs).unwrap().data.node_type
+                        {
+                            let idx = v_tree.new_node(VNode::Index {
+                                high: *high,
+                                low: *low,
+                            });
+                            lhs_index = Some(idx);
+                            lhs = tree[lhs].children.as_ref().unwrap()[0];
+                        }
+
+                        (lhs, lhs_index)
+                    };
+
                     let rhs = child_node.children.as_ref().unwrap()[1];
 
                     let lhs_name = match &tree.get_node(lhs).unwrap().data.node_type {
                         ASTNodeType::VariableReference { var_id } => {
+                            //Can't assign to an input
                             if in_values.contains(var_id) {
                                 return Err(CompileError::InputAssignment {
                                     context: tree.get_node(lhs).unwrap().data.context.clone(),
                                 });
                             }
+
                             let t_offset = tree.get_first_child(lhs)?;
                             if let ASTNodeType::TimeOffsetRelative { offset } =
                                 t_offset.data.node_type
@@ -600,9 +758,19 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
                         }
                         _ => unreachable!(),
                     };
-                    let lhs_vnode = v_tree.new_node(VNode::VariableReference {
-                        var_id: lhs_name.to_string(),
-                    });
+
+                    //Sometimes, an index will need to be added
+                    let lhs_vnode = {
+                        let mut lhs_vnode = v_tree.new_node(VNode::VariableReference {
+                            var_id: lhs_name.to_string(),
+                        }); //If the lhs had an index above it created in v_tree, append lhs_vnode properly
+                        if let Some(idx) = lhs_index {
+                            v_tree.append_to(idx, lhs_vnode)?;
+                            lhs_vnode = idx;
+                        }
+
+                        lhs_vnode
+                    };
 
                     // For now, only use the assign keyword for assignments.
                     let assign_vnode = v_tree.new_node(VNode::AssignKeyword {});

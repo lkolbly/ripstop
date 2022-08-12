@@ -30,20 +30,29 @@ impl<T> Tree<T> {
 
     /// Creates a new tree and populates it with nodes using the parameter `nodes`.
     /// The parameter lists each node's data and children
-    pub fn new_with_nodes(nodes: Vec<(T, Vec<NodeId>)>) -> Tree<T> {
+    ///
+    /// Currently, this depends on `new_node` creating sequential indices, starting from 0
+    pub fn new_with_nodes(mut nodes: Vec<(T, Vec<NodeId>)>) -> Result<Tree<T>, TreeError> {
         let mut t = Tree::new();
 
         //Holds the children of each given node
         let mut node_children: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
 
-        /*for i in 0..nodes.len() {
-            let node = t.new_node(nodes[i].0);
-            node_children.insert(i.into(), nodes[i].1);
-        }*/
+        //Populate node_children and create every node
+        while nodes.len() > 0 {
+            let (data, children) = nodes.remove(0);
+            let node = t.new_node(data);
+            node_children.insert(node, children);
+        }
 
-        //for i in 0..nodes.len() {}
-        todo!();
-        t
+        //Set up relationships between each parent and their children
+        for (parent, children) in node_children {
+            for child in children {
+                t.append_to(parent, child)?;
+            }
+        }
+
+        Ok(t)
     }
 
     /// Finds the first node without any parents. If no such node exists, returns `None`
@@ -236,9 +245,27 @@ impl<T> Tree<T> {
             .expect("append_tree called when `tree` had no head")
             + offset;
 
+        fn add_offset_vec(vals: &mut Option<Vec<NodeId>>, offset: NodeId) {
+            if let Some(vals) = vals {
+                for v in vals {
+                    *v += offset;
+                }
+            }
+        }
+
+        fn add_offset(val: &mut Option<NodeId>, offset: NodeId) {
+            if let Some(val) = val {
+                *val += offset;
+            }
+        }
+
         //First, update the id of all tree's nodes to match what their ids will be after appending
         for n in &mut tree.nodes {
             n.id += offset;
+            add_offset_vec(&mut n.children, offset);
+            add_offset(&mut n.parent, offset);
+            add_offset(&mut n.next_sibling, offset);
+            add_offset(&mut n.previous_sibling, offset);
         }
         //Now, append all of tree's nodes to self
         self.nodes.append(&mut tree.nodes);

@@ -1,4 +1,3 @@
-module hello() -> (bits<32> led) {
-    bits<32> a;
-    led[t] = a[t];
+module hello(bits<32> a) -> (bits<32> led) {
+    led[t] = a[t] + a[t-1];
 }
