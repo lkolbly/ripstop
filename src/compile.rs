@@ -460,13 +460,14 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
             })
         };
 
-        let registers: Vec<String> = variables
+        // Contains tuples of (registsred name, variable name)
+        let registers: Vec<(String, String)> = variables
             .clone()
             .into_iter()
             // Map each variable to its name with index (var_0, var_1, etc.), using flat_map to collect all values
             .flat_map(|var| {
                 (var.1.lowest_ref..(var.1.highest_ref + 1))
-                    .map(move |i| variable_name_relative(&var.0, i))
+                    .map(move |i| (variable_name_relative(&var.0, i), var.0.to_owned()))
             })
             .collect();
 
@@ -482,17 +483,15 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
             v_tree.append_to(v_head, reg_chain)?;
 
             // Add all the registers to the chain. If the register is an array (as of now, bits<n>), create an Index above the VariableReference
-            for reg in registers {
+            for (reg, variable_name) in registers {
                 let var_node = VNode::VariableReference {
                     var_id: reg.clone(),
                 };
                 let reg_head = {
                     let var = v_tree.new_node(var_node);
-                    println!("Reg name: {}\nCurrent `variables`: {:?}", reg, variables);
+                    println!("Reg name: {} {}\nCurrent `variables`: {:?}", reg, variable_name, variables);
 
-                    panic!("Currently, this loop has no way to know whether or not to add an index to a register. This can be solved by finding the bounds using `variables[reg]`, but the problem is that each register name `reg` is received as a formatted string (i.e. `foo_1` or `foo_neg2` not `foo`)");
-
-                    match variables[&reg].var_type {
+                    match variables[&variable_name].var_type {
                         Type::Bits { size } => {
                             let index_node = v_tree.new_node(VNode::Index { high: size, low: 0 });
                             v_tree.append_to(index_node, var)?;
