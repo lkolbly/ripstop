@@ -505,7 +505,10 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
 
                 match variables[&variable_name].var_type {
                     Type::Bits { size } => {
-                        let index_node = v_tree.new_node(VNode::Index { high: size, low: 0 });
+                        let index_node = v_tree.new_node(VNode::Index {
+                            high: size - 1,
+                            low: 0,
+                        });
                         v_tree.append_to(index_node, var)?;
                         index_node
                     }
