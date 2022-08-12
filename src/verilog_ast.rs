@@ -31,6 +31,8 @@ pub enum VNode {
 
     ///Declares each child as a register in a chain (i.e. `reg a, b, c, d[31:0];`)
     RegisterDeclare {},
+    /// Declares each child as a wire (i.e. `wire a, b, c`)
+    WireDeclare {},
     VariableReference {
         var_id: String,
     },
@@ -118,7 +120,22 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
                 .map(|n| verilog_ast_to_string(*n, tree, 0))
                 .collect::<Vec<_>>();
 
-            format!("{whitespace}reg {};", vars.join(", "))
+                format!("{whitespace}reg {};", vars.join(", "))
+            } else {
+                String::new()
+            }
+        }
+        VNode::WireDeclare {} => {
+            if let Some(children) = children {
+                let vars = children
+                    .iter()
+                    .map(|n| verilog_ast_to_string(*n, tree, num_whitespace))
+                    .collect::<Vec<_>>();
+
+                format!("{whitespace}wire {};", vars.join(", "))
+            } else {
+                String::new()
+            }
         }
         VNode::AlwaysBegin { trigger } => {
             let children_string = get_children_string(children, tree, next_num_whitespace);
