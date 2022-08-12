@@ -465,14 +465,14 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
         })
     };
 
-    // Contains tuples of (registered name, variable name)
-    let registers: Vec<(String, String)> = variables
+    // Contains tuples of (registered name, relative time spec, variable name)
+    let registers: Vec<(String, i64, String)> = variables
         .clone()
         .into_iter()
         // Map each variable to its name with index (var_0, var_1, etc.), using flat_map to collect all values
         .flat_map(|var| {
             (var.1.lowest_ref..(var.1.highest_ref + 1))
-                .map(move |i| (variable_name_relative(&var.0, i), var.0.to_owned()))
+                .map(move |i| (variable_name_relative(&var.0, i), i, var.0.to_owned()))
         })
         .collect();
 
@@ -487,16 +487,20 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
         let reg_chain = v_tree.new_node(reg_chain);
         v_tree.append_to(v_head, reg_chain)?;
 
+        let wire_chain = VNode::WireDeclare {};
+        let wire_chain = v_tree.new_node(wire_chain);
+        v_tree.append_to(v_head, wire_chain)?;
+
         // Add all the registers to the chain. If the register is an array (as of now, bits<n>), create an Index above the VariableReference
-        for (reg, variable_name) in registers {
+        for (reg, timespec, variable_name) in registers {
             let var_node = VNode::VariableReference {
                 var_id: reg.clone(),
             };
             let reg_head = {
                 let var = v_tree.new_node(var_node);
                 println!(
-                    "Reg name: {} {}\nCurrent `variables`: {:?}",
-                    reg, variable_name, variables
+                    "Reg name: {} {} {}\nCurrent `variables`: {:?}",
+                    reg, variable_name, timespec, variables
                 );
 
                 match variables[&variable_name].var_type {
@@ -509,7 +513,11 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
                 }
             };
 
-            v_tree.append_to(reg_chain, reg_head)?;
+            if timespec == 0 {
+                v_tree.append_to(wire_chain, reg_head)?;
+            } else {
+                v_tree.append_to(reg_chain, reg_head)?;
+            }
         }
 
         for (name, offsets) in variables.clone().into_iter() {
