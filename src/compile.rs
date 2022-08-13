@@ -65,6 +65,99 @@ impl VarBounds {
     }
 }
 
+fn get_node_type(
+    tree: &Tree<ASTNode>,
+    this_node: NodeId,
+    child_vals: Vec<&Type>,
+    variables: &HashMap<String, VarBounds>,
+) -> Result<Type, CompileError> {
+    let this_node = &tree[this_node];
+    let child_vals: Vec<Type> = child_vals.iter().map(|&x| x.clone()).collect();
+
+    match &this_node.data.node_type {
+        //Variable references pass their types up without needing to check their (non-existent) children
+        ASTNodeType::VariableReference { var_id } => {
+            let bounds = &variables[var_id];
+            Ok(bounds.var_type)
+        }
+        //Indexing restricts the type and only works on arrays/bits<n> when `n >= high >= low >= 0`. Due to type limits, `low >= 0` is guaranteed
+        ASTNodeType::Index { high, low } => {
+            if let Type::Bits { size } = child_vals[0] {
+                if low > high || *high > size {
+                    Err(CompileError::IndexOutOfBounds {
+                        context: this_node.data.context.clone(),
+                    })
+                } else {
+                    Ok(Type::Bits {
+                        size: high - low + 1,
+                    })
+                }
+            } else {
+                Err(CompileError::CannotIndexType {
+                    context: this_node.data.context.clone(),
+                    invalid_type: child_vals[0],
+                })
+            }
+        }
+        //Unary operators don't need to worry about type matching and transformation
+        ASTNodeType::BitwiseInverse => Ok(child_vals[0]),
+        //Binary operators require valid types, and theoretically this could allow for different types on each side
+        //For example, if matrix multiplication was added, then as long as `lhs` was a matrix, `rhs` could be matrix or scalar
+        ASTNodeType::Add | ASTNodeType::Subtract => {
+            //The error which will be returned if a type mismatch occurs
+            let err = Err(CompileError::MismatchedTypes {
+                context: tree[this_node.children.clone().unwrap()[0]]
+                    .data
+                    .context
+                    .clone(),
+                current_type: child_vals[1],
+                needed_type: child_vals[0],
+            });
+
+            match (child_vals[0], child_vals[1]) {
+                (Type::Bit, Type::Bit) => Ok(Type::Bit),
+                (Type::Bits { size: lhs_size }, Type::Bits { size: rhs_size }) => {
+                    if lhs_size == rhs_size {
+                        Ok(Type::Bits { size: lhs_size })
+                    } else {
+                        err
+                    }
+                }
+                _ => err,
+            }
+        }
+        //Time offsets need to be allowed but do *not* pass any type, they are typeless
+        //Since this can't be represented, just return a type of bits<0>
+        ASTNodeType::TimeOffsetRelative { offset: _ }
+        | ASTNodeType::TimeOffsetAbsolute { time: _ } => Ok(Type::None),
+
+        ASTNodeType::NumberLiteral(literal) => {
+            if literal.size_bits == 1 {
+                Ok(Type::Bit)
+            } else {
+                Ok(Type::Bits { size: literal.size_bits })
+            }
+        },
+
+        //Invalid nodes (which do not work as expressions in assignment) will be expressed as a bad relationship between this node and its children
+        _ => {
+            //Start with this node
+            let mut v = vec![this_node.data.clone()];
+            //Add the children
+            v.append(
+                &mut this_node
+                    .children
+                    .clone()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|id| tree[id].data.clone())
+                    .collect(),
+            );
+            Err(CompileError::InvalidNodeTypes { nodes: v })
+        }
+    }
+}
+
 /// Currently, this takes the input tree and does the following:
 /// * Verifies that types in assignments and expressions match up correctly (i.e. verifies types)
 fn verify(
@@ -74,107 +167,12 @@ fn verify(
     //Type verification, done bottom-up, keeping track of each nodes' return type
     //Done "recursively" for each assignment
     for n in tree {
+        #[allow(clippy::single_match)] // Just for now, to silence the warning
         match &tree[n].data.node_type {
             ASTNodeType::Assign => {
-                //The method to be applied recursively. Needs to cover anything that would be below an assignment
-                fn f(
-                    tree: &Tree<ASTNode>,
-                    this_node: NodeId,
-                    child_vals: Vec<&Result<Type, CompileError>>,
-                    variables: &HashMap<String, VarBounds>,
-                ) -> Result<Type, CompileError> {
-                    let this_node = &tree[this_node];
-                    //Make `child_vals` more useful *and* pass along any errors generated by the children if needed
-                    let child_vals = {
-                        let mut v = Vec::with_capacity(child_vals.len());
-                        for c in child_vals {
-                            match c {
-                                Ok(t) => v.push(*t),
-                                Err(e) => return Err(e.clone()),
-                            }
-                        }
-
-                        v
-                    };
-
-                    match &this_node.data.node_type {
-                        //Variable references pass their types up without needing to check their (non-existent) children
-                        ASTNodeType::VariableReference { var_id } => {
-                            let bounds = &variables[var_id];
-                            Ok(bounds.var_type)
-                        }
-                        //Indexing restricts the type and only works on arrays/bits<n> when `n >= high >= low >= 0`. Due to type limits, `low >= 0` is guaranteed
-                        ASTNodeType::Index { high, low } => {
-                            if let Type::Bits { size } = child_vals[0] {
-                                if low > high || *high > size {
-                                    Err(CompileError::IndexOutOfBounds {
-                                        context: this_node.data.context.clone(),
-                                    })
-                                } else {
-                                    Ok(Type::Bits {
-                                        size: high - low + 1,
-                                    })
-                                }
-                            } else {
-                                Err(CompileError::CannotIndexType {
-                                    context: this_node.data.context.clone(),
-                                    invalid_type: child_vals[0],
-                                })
-                            }
-                        }
-                        //Unary operators don't need to worry about type matching and transformation
-                        ASTNodeType::BitwiseInverse => Ok(child_vals[0]),
-                        //Binary operators require valid types, and theoretically this could allow for different types on each side
-                        //For example, if matrix multiplication was added, then as long as `lhs` was a matrix, `rhs` could be matrix or scalar
-                        ASTNodeType::Add | ASTNodeType::Subtract => {
-                            //The error which will be returned if a type mismatch occurs
-                            let err = Err(CompileError::MismatchedTypes {
-                                context: tree[this_node.children.clone().unwrap()[0]]
-                                    .data
-                                    .context
-                                    .clone(),
-                                current_type: child_vals[1],
-                                needed_type: child_vals[0],
-                            });
-
-                            match (child_vals[0], child_vals[1]) {
-                                (Type::Bit, Type::Bit) => Ok(Type::Bit),
-                                (Type::Bits { size: lhs_size }, Type::Bits { size: rhs_size }) => {
-                                    if lhs_size == rhs_size {
-                                        Ok(Type::Bits { size: lhs_size })
-                                    } else {
-                                        err
-                                    }
-                                }
-                                _ => err,
-                            }
-                        }
-                        //Time offsets need to be allowed but do *not* pass any type, they are typeless
-                        //Since this can't be represented, just return a type of bits<0>
-                        ASTNodeType::TimeOffsetRelative { offset: _ }
-                        | ASTNodeType::TimeOffsetAbsolute { time: _ } => Ok(Type::None),
-                        //Invalid nodes (which do not work as expressions in assignment) will be expressed as a bad relationship between this node and its children
-                        _ => {
-                            //Start with this node
-                            let mut v = vec![this_node.data.clone()];
-                            //Add the children
-                            v.append(
-                                &mut this_node
-                                    .children
-                                    .clone()
-                                    .unwrap_or_default()
-                                    .into_iter()
-                                    .map(|id| tree[id].data.clone())
-                                    .collect(),
-                            );
-                            Err(CompileError::InvalidNodeTypes { nodes: v })
-                        }
-                    }
-                }
-
                 let children = tree[n].children.clone().unwrap();
-                let lhs_t = tree.recurse_iterative(children[0], f, variables)?;
-                let rhs_t = tree.recurse_iterative(children[1], f, variables)?;
+                let lhs_t = tree.recurse_iterative(children[0], get_node_type, variables)?;
+                let rhs_t = tree.recurse_iterative(children[1], get_node_type, variables)?;
 
                 if lhs_t != rhs_t {
                     let rhs = &tree[children[1]];
@@ -651,6 +649,68 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
         trigger: AlwaysBeginTriggerType::Posedge,
     });
 
+    // Figure out what each value is set to
+    let mut reset_values = HashMap::new();
+    let mut assignments = HashMap::new();
+    if let Some(children) = &tree[head].children {
+        for c in children {
+            let child_node = tree.get_node(*c).unwrap();
+            match child_node.data.node_type {
+                ASTNodeType::Assign => {
+                    let lhs = child_node.children.as_ref().unwrap()[0];
+                    let rhs = child_node.children.as_ref().unwrap()[1];
+
+                    match &tree.get_node(lhs).unwrap().data.node_type {
+                        ASTNodeType::VariableReference { var_id } => {
+                            //Can't assign to an input
+                            if in_values.contains(var_id) {
+                                return Err(CompileError::InputAssignment {
+                                    context: tree.get_node(lhs).unwrap().data.context.clone(),
+                                });
+                            }
+
+                            match tree.get_first_child(lhs)?.data.node_type {
+                                ASTNodeType::TimeOffsetRelative { offset } => {
+                                    if offset < 0 {
+                                        return Err(CompileError::AssignmentInPast {
+                                            context: tree.get_node(lhs).unwrap().data.context.clone(),
+                                        });
+                                    }
+                                    if assignments.contains_key(var_id) {
+                                        panic!("Tried assigning to a variable multiple times!");
+                                    }
+                                    assignments.insert(var_id, (offset, rhs));
+                                }
+                                ASTNodeType::TimeOffsetAbsolute { time } => {
+                                    if time != 0 {
+                                        panic!("May only assign absolute times at t=0!");
+                                    }
+                                    if reset_values.contains_key(var_id) {
+                                        panic!("Tried setting a reset value for a variable multiple times!");
+                                    }
+                                    reset_values.insert(var_id, rhs);
+                                }
+                                _ => panic!("Unexpected node type"),
+                            }
+                        }
+                        _ => panic!("Should be unreachable!")
+                    }
+                }
+                ASTNodeType::VariableDeclaration {
+                    var_type: _,
+                    var_id: _,
+                } => {}
+                _ => unreachable!(),
+            }
+        }
+    } else {
+        println!("Module {} has no children", id);
+    }
+
+    println!("Determined module assignments:");
+    println!("Reset values: {:#?}", reset_values);
+    println!("Assignments: {:#?}", assignments);
+
     //Register chain creation for each variable
     if !registers.is_empty() {
         let reg_chain = VNode::RegisterDeclare {};
@@ -741,17 +801,69 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
             // etc.
             for i in offsets.lowest_ref..offsets.highest_ref {
                 let mut lhs = compile_var_ref_from_string(&name, Some(i), index.clone())?;
+
+                let reset_value = if let Some(reset_value) = reset_values.get(&name) {
+                    let reset_value = tree.get_node(*reset_value)?;
+                    match &reset_value.data.node_type {
+                        ASTNodeType::NumberLiteral(literal) => {
+                            *literal
+                        }
+                        _ => {
+                            panic!("Reset value RHS must be a number literal");
+                        }
+                    }
+                } else {
+                    crate::parse::NumberLiteral {
+                        size_bits: 1,
+                        value: 0,
+                    }
+                };
+
+                let mut conditional_tree = Tree::new();
+                let conditional = conditional_tree.new_node(VNode::Ternary {});
+                let rst_ref = conditional_tree.new_node(VNode::VariableReference { var_id: "rst".to_owned() });
+                let reset_value = conditional_tree.new_node(VNode::NumberLiteral { literal: reset_value });
+                conditional_tree.append_to(conditional, rst_ref)?;
+                conditional_tree.append_to(conditional, reset_value)?;
                 let mut rhs = compile_var_ref_from_string(&name, Some(i + 1), index.clone())?;
+                conditional_tree.append_tree(conditional, &mut rhs)?;
+
                 let reg_assign = v_tree.new_node(VNode::ClockAssign {});
 
                 v_tree.append_tree(reg_assign, &mut lhs)?;
-                v_tree.append_tree(reg_assign, &mut rhs)?;
+                v_tree.append_tree(reg_assign, &mut conditional_tree)?;
                 v_tree.append_to(clock_edge, reg_assign)?;
             }
         }
     }
 
-    //User-defined logic compilation (uses the compile_expression function when encountering an expression)
+    // Compile the assignments
+    for (var_id, (relative_time, rhs)) in assignments.drain() {
+        let verilog_name = variable_name_relative(var_id, relative_time);
+
+        // Create a variable reference to the lhs
+        let lhs_vnode = {
+            let mut lhs_vnode = v_tree.new_node(VNode::VariableReference {
+                var_id: verilog_name.clone(),
+            });
+            //If the lhs had an index above it created in v_tree, append lhs_vnode properly
+            /*if let Some(idx) = lhs_index {
+                v_tree.append_to(idx, lhs_vnode)?;
+                lhs_vnode = idx;
+            }*/
+
+            lhs_vnode
+        };
+
+        let assign_vnode = v_tree.new_node(VNode::AssignKeyword {});
+        v_tree.append_to(head, assign_vnode)?;
+
+        v_tree.append_to(assign_vnode, lhs_vnode)?;
+
+        compile_expression(tree, rhs, &mut v_tree, assign_vnode, &variables)?;
+    }
+
+    /*//User-defined logic compilation (uses the compile_expression function when encountering an expression)
     if let Some(children) = &tree[head].children {
         for c in children {
             let child_node = tree.get_node(*c).unwrap();
@@ -883,7 +995,7 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
         }
     } else {
         println!("Module {} has no children", id);
-    }
+    }*/
 
     // Add the @(posedge clk) block if it's non-empty
     if v_tree.get_node(clock_edge).unwrap().children.is_some() {

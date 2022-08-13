@@ -93,8 +93,17 @@ pub fn parse(toparse: &str) -> Tree<ASTNode> {
                 var_id: inner_rules.next().unwrap().as_str().to_string(),
             }),
             Rule::EOI => None,
+            Rule::number_literal => Some(ASTNodeType::NumberLiteral(NumberLiteral::from_tree(
+                pair.clone(),
+            ))),
+            // Hack to not recursively parse number literals
+            Rule::full_number_literal => None,
             _ => {
-                println!("Unimplement rule '{:?}'", rule);
+                println!(
+                    "Unimplemented rule '{:?}' for {:?}",
+                    rule,
+                    pair.clone().as_span()
+                );
                 todo!();
             }
         };
@@ -169,7 +178,7 @@ pub fn parse(toparse: &str) -> Tree<ASTNode> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct NumberLiteral {
     pub size_bits: usize,
     pub value: u128, // This is the maximum supported integer literal
@@ -187,7 +196,7 @@ impl NumberLiteral {
                 inner
             }
             _ => {
-                panic!("Unexpected rule!");
+                panic!("Unexpected rule! {:?}", rule);
             }
         };
 
@@ -229,7 +238,7 @@ impl NumberLiteral {
                 };
             }
             _ => {
-                panic!("Unexpected rule!");
+                panic!("Unexpected rule! {:?}", rule);
             }
         };
 

@@ -19,7 +19,7 @@ variable_index = _{ variable_index_relative | variable_index_absolute }
 statement = _{ assignment | declaration_statement }
 declaration_statement = _{ variable_declaration ~ ";" }
 assignment = { indexed_variable ~ "=" ~ expression ~ ";" }
-expression = _{ binary_operation | indexed_variable | unary_operation | parenthetical_expression }
+expression = _{ binary_operation | indexed_variable | unary_operation | parenthetical_expression | number_literal }
 parenthetical_expression = _{ "(" ~ expression ~ ")" }
 
 unary_operand = _{ parenthetical_expression | indexed_variable | unary_operation }

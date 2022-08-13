@@ -292,9 +292,11 @@ impl<T> Tree<T> {
     ///
     /// The method acts on the following data: the tree itself, the index of each node, and the values returned by each node's children.
     /// It also uses some static value of type `&C` provided by the user if needed
-    pub fn recurse_iterative<V, C, F>(&self, head: NodeId, f: F, static_val: &C) -> V
+    ///
+    /// If any call to the function returns an error, stop the recursion.
+    pub fn recurse_iterative<V, E, C, F>(&self, head: NodeId, f: F, static_val: &C) -> Result<V, E>
     where
-        F: Fn(&Tree<T>, NodeId, Vec<&V>, &C) -> V,
+        F: Fn(&Tree<T>, NodeId, Vec<&V>, &C) -> Result<V, E>,
     {
         //Tentative algorithm (to be optimized):
         //1-Define a frontier which contains the deepest children of `head`
@@ -308,7 +310,7 @@ impl<T> Tree<T> {
         for n in self.iter_subtree(head) {
             //If `n` has no children, it is part of the deepest children (which is the starting value of the frontier)
             if let None = self[n].children {
-                frontier.insert(n, (f)(&self, n, Vec::new(), static_val));
+                frontier.insert(n, (f)(&self, n, Vec::new(), static_val)?);
             }
         }
 
@@ -334,13 +336,13 @@ impl<T> Tree<T> {
                     }
                 }
 
-                let parent_val = (f)(&self, parent.id, sibling_values, static_val);
+                let parent_val = (f)(&self, parent.id, sibling_values, static_val)?;
                 frontier.insert(parent.id, parent_val);
             }
 
             //If the frontier contains the `head` node, then return its value
             if let Some(head_val) = frontier.remove(&head) {
-                return head_val;
+                return Ok(head_val);
             }
         }
     }

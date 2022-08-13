@@ -126,6 +126,7 @@ pub enum ASTNodeType {
         var_type: Type,
         var_id: String,
     },
+    NumberLiteral(crate::parse::NumberLiteral),
 }
 
 //This ripstop code:
