@@ -69,10 +69,7 @@ pub fn parse(toparse: &str) -> Tree<ASTNode> {
                 },
             }),
             Rule::variable_index_absolute => Some(ASTNodeType::TimeOffsetAbsolute {
-                time: NumberLiteral::from_tree(inner_rules.next().unwrap())
-                    .value
-                    .try_into()
-                    .unwrap(),
+                time: SignedInteger::from_tree(inner_rules.next().unwrap()).0,
             }),
             Rule::unary_operation => Some(
                 match inner_rules
@@ -175,6 +172,17 @@ pub fn parse(toparse: &str) -> Tree<ASTNode> {
             },
             _ => unreachable!(),
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[repr(transparent)]
+pub struct SignedInteger(i64);
+
+impl SignedInteger {
+    fn from_tree(tree: Pair<Rule>) -> Self {
+        let full_str = tree.as_str();
+        Self(full_str.parse().unwrap())
     }
 }
 
@@ -293,6 +301,23 @@ impl NumberLiteral {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn test_parse_signed_integer() {
+        let tests = [("5", SignedInteger(5)), ("-12357", SignedInteger(-12357))];
+
+        for (test_case, expected) in tests.iter() {
+            let parsed = RipstopParser::parse(Rule::signed_integer, test_case)
+                .expect("Parse failed!")
+                .next()
+                .unwrap();
+
+            //println!("{:?}", parsed);
+            let literal = SignedInteger::from_tree(parsed);
+            //println!("{:?}", literal);
+            assert_eq!(&literal, expected);
+        }
+    }
 
     #[test]
     fn test_parse_integer_literal() {

@@ -135,9 +135,11 @@ fn get_node_type(
             if literal.size_bits == 1 {
                 Ok(Type::Bit)
             } else {
-                Ok(Type::Bits { size: literal.size_bits })
+                Ok(Type::Bits {
+                    size: literal.size_bits,
+                })
             }
-        },
+        }
 
         //Invalid nodes (which do not work as expressions in assignment) will be expressed as a bad relationship between this node and its children
         _ => {
@@ -673,7 +675,12 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
                                 ASTNodeType::TimeOffsetRelative { offset } => {
                                     if offset < 0 {
                                         return Err(CompileError::AssignmentInPast {
-                                            context: tree.get_node(lhs).unwrap().data.context.clone(),
+                                            context: tree
+                                                .get_node(lhs)
+                                                .unwrap()
+                                                .data
+                                                .context
+                                                .clone(),
                                         });
                                     }
                                     if assignments.contains_key(var_id) {
@@ -682,7 +689,8 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
                                     assignments.insert(var_id, (offset, rhs));
                                 }
                                 ASTNodeType::TimeOffsetAbsolute { time } => {
-                                    if time != 0 {
+                                    // TODO: We should throw an error according to issue #15 if the user uses the wrong time
+                                    if time != 0 && time != -1 {
                                         panic!("May only assign absolute times at t=0!");
                                     }
                                     if reset_values.contains_key(var_id) {
@@ -693,7 +701,7 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
                                 _ => panic!("Unexpected node type"),
                             }
                         }
-                        _ => panic!("Should be unreachable!")
+                        _ => panic!("Should be unreachable!"),
                     }
                 }
                 ASTNodeType::VariableDeclaration {
@@ -779,7 +787,35 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
                     // Assign index 0 to actual variable (only necessary if variable is an output):
                     // assign out = out_0;
                     v_tree.append_tree(assign_node, &mut assign_no_index_tree)?;
-                    v_tree.append_tree(assign_node, &mut assign_index_0_tree)?;
+
+                    // If the rhs has variables referenced at [t], then this is a combinatorial assign
+                    // Otherwise, it is registered (and we assign the t-1 register to the output)
+                    let is_combinatorial_output = {
+                        let rhs = assignments.get(&name).unwrap().1;
+                        tree.recurse_iterative::<_, CompileError, _, _>(
+                            rhs,
+                            |tree, node, children, _| {
+                                // If any children returned true, we're true
+                                if children.iter().any(|x| **x) {
+                                    return Ok(true);
+                                }
+
+                                match &tree.get_node(node).unwrap().data.node_type {
+                                    ASTNodeType::TimeOffsetRelative { offset } => Ok(*offset == 0),
+                                    _ => Ok(false),
+                                }
+                            },
+                            &(),
+                        )?
+                    };
+                    if is_combinatorial_output {
+                        v_tree.append_tree(assign_node, &mut assign_index_0_tree)?;
+                    } else {
+                        let mut prev_ref =
+                            compile_var_ref_from_string(&name, Some(-1), index.clone())?;
+                        v_tree.append_tree(assign_node, &mut prev_ref)?;
+                    }
+
                     /*v_tree.append_to(assign_node, assign_no_index)?;
                     v_tree.append_to(assign_node, assign_index_0)?;*/
                 } else {
@@ -805,33 +841,37 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
                 let reset_value = if let Some(reset_value) = reset_values.get(&name) {
                     let reset_value = tree.get_node(*reset_value)?;
                     match &reset_value.data.node_type {
-                        ASTNodeType::NumberLiteral(literal) => {
-                            *literal
-                        }
+                        ASTNodeType::NumberLiteral(literal) => Some(*literal),
                         _ => {
                             panic!("Reset value RHS must be a number literal");
                         }
                     }
                 } else {
-                    crate::parse::NumberLiteral {
-                        size_bits: 1,
-                        value: 0,
-                    }
+                    None
                 };
 
-                let mut conditional_tree = Tree::new();
-                let conditional = conditional_tree.new_node(VNode::Ternary {});
-                let rst_ref = conditional_tree.new_node(VNode::VariableReference { var_id: "rst".to_owned() });
-                let reset_value = conditional_tree.new_node(VNode::NumberLiteral { literal: reset_value });
-                conditional_tree.append_to(conditional, rst_ref)?;
-                conditional_tree.append_to(conditional, reset_value)?;
-                let mut rhs = compile_var_ref_from_string(&name, Some(i + 1), index.clone())?;
-                conditional_tree.append_tree(conditional, &mut rhs)?;
+                let mut rhs = if let Some(reset_value) = reset_value {
+                    let mut conditional_tree = Tree::new();
+                    let conditional = conditional_tree.new_node(VNode::Ternary {});
+                    let rst_ref = conditional_tree.new_node(VNode::VariableReference {
+                        var_id: "rst".to_owned(),
+                    });
+                    let reset_value = conditional_tree.new_node(VNode::NumberLiteral {
+                        literal: reset_value,
+                    });
+                    conditional_tree.append_to(conditional, rst_ref)?;
+                    conditional_tree.append_to(conditional, reset_value)?;
+                    let mut rhs = compile_var_ref_from_string(&name, Some(i + 1), index.clone())?;
+                    conditional_tree.append_tree(conditional, &mut rhs)?;
+                    conditional_tree
+                } else {
+                    compile_var_ref_from_string(&name, Some(i + 1), index.clone())?
+                };
 
                 let reg_assign = v_tree.new_node(VNode::ClockAssign {});
 
                 v_tree.append_tree(reg_assign, &mut lhs)?;
-                v_tree.append_tree(reg_assign, &mut conditional_tree)?;
+                v_tree.append_tree(reg_assign, &mut rhs)?;
                 v_tree.append_to(clock_edge, reg_assign)?;
             }
         }

@@ -68,7 +68,7 @@ pub enum VNode {
     Ternary {},
     NumberLiteral {
         literal: crate::parse::NumberLiteral,
-    }
+    },
 }
 
 pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: usize) -> String {
@@ -197,7 +197,7 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
                 verilog_ast_to_string(children[0], tree, 0),
             )
         }
-        VNode::Ternary {  } => {
+        VNode::Ternary {} => {
             let children = children.unwrap();
             let condition = verilog_ast_to_string(children[0], tree, 0);
             let iftrue = verilog_ast_to_string(children[1], tree, 0);
