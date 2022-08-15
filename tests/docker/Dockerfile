@@ -1,8 +1,8 @@
 # From https://github.com/lerwys/docker-iverilog/blob/master/Dockerfile
 
-FROM debian:stretch as builder
+FROM debian:stable as builder
 
-ENV IVERILOG_VERSION=v10_2
+ENV IVERILOG_VERSION=v11_0
 
 LABEL \
     com.github.lerwys.docker.dockerfile="Dockerfile" \
@@ -31,7 +31,7 @@ RUN git clone --branch=${IVERILOG_VERSION} https://github.com/steveicarus/iveril
     cd && \
     rm -rf iverilog
 
-FROM debian:stretch
+FROM debian:stable
 
 # TODO: Maybe start from a python base?
 RUN apt -y update && apt install -y python3 python3-pip

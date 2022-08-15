@@ -7,7 +7,7 @@ from mako.template import Template
 
 def get_files(pattern):
     files = os.listdir(".")
-    files = filter(lambda s: pattern in s, files)
+    files = filter(lambda s: s.endswith(pattern), files)
     files = map(lambda s: s.split(".")[0], files)
     files = list(files)
     return files
@@ -24,7 +24,9 @@ def pytest_generate_tests(metafunc):
 
     if "rp_csvtestdata_testname" in metafunc.fixturenames:
         metafunc.parametrize("rp_csvtestdata_testname", get_files(".test.csv"))
-    pass
+
+    if "rp_combinedtest_testname" in metafunc.fixturenames:
+        metafunc.parametrize("rp_combinedtest_testname", get_files(".test"))
 
 class TempFile:
     def __init__(self):
@@ -42,7 +44,12 @@ def compile_rp(rptest):
 
     # TODO: Actually run the compiler. For now, we copy over the ".compiled.v" file
     compiled_filename = rptest + ".compiled.v"
-    shutil.copy(compiled_filename, target.filename)
+    try:
+        shutil.copy(compiled_filename, target.filename)
+    except:
+        cmd = ["./ripstop", "build", rptest, "-o", target.filename]
+        print(" ".join(cmd))
+        subprocess.check_output(cmd)
 
     return target
 
@@ -130,6 +137,77 @@ def test_matches_csv(rp_csvtestdata_testname):
     compiledf.rm()
     target.rm()
     test_harness.rm()
+
+def test_combined_file(rp_combinedtest_testname):
+    """
+    Performs a compile test on a single combined test file
+    """
+    with open("{}.test".format(rp_combinedtest_testname)) as f:
+        lines = list(map(lambda line: line.strip("\r\n"), f.read().split("\n")))
+        segments = {}
+        current_segment = None
+        for line in lines:
+            if line == "### CODE":
+                current_segment = "code"
+                segments[current_segment] = []
+            elif line == "### DATA":
+                current_segment = "data"
+                segments[current_segment] = []
+            elif current_segment != None:
+                segments[current_segment].append(line)
+        pass
+
+    assert "data" in segments
+    assert "code" in segments
+
+    codefile = TempFile()
+    datafile = TempFile()
+
+    with open(codefile.filename, "w") as f:
+        f.write("\n".join(segments["code"]))
+
+    with open(datafile.filename, "w") as f:
+        f.write("\n".join(segments["data"]))
+
+    test_harness = TempFile()
+
+    dut_inputs, dut_outputs, test_data = parse_test_data(datafile.filename)
+
+    with open(test_harness.filename, "w") as f:
+        generate_test_verilog({
+            "name": rp_combinedtest_testname,
+            "inputs": dut_inputs,
+            "outputs": dut_outputs,
+        }, test_data, f)
+
+    compiledf = compile_rp(codefile.filename)
+    with open(compiledf.filename, "r") as f:
+        compiled = f.read()
+
+    with open(test_harness.filename, "r") as f:
+        test = f.read()
+
+    print(compiledf.filename)
+
+    # Concatenate the compiled output and the test into a new file
+    target = TempFile()
+    with open(target.filename, "w") as t:
+        t.write(compiled)
+        t.write(test)
+
+    # Build that with iverilog
+    test_executable = TempFile()
+    subprocess.run("iverilog -o " + test_executable.filename + " " + target.filename, check=True, shell=True)
+
+    # Run the executable
+    stdout = subprocess.check_output(test_executable.filename, shell=True).decode("utf-8")
+    assert "fail" not in stdout, test_harness.filename
+
+    compiledf.rm()
+    target.rm()
+    test_harness.rm()
+    codefile.rm()
+    datafile.rm()
 
 def generate_test_verilog(dutspec, testdata, output):
     result = Template(open("test.template.v.mako").read()).render(

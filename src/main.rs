@@ -55,9 +55,10 @@ fn compile(input: std::path::PathBuf, output: Option<std::path::PathBuf>) -> i32
 
     println!("Bare tree:\n\n{}\n\n", v_a);
 
+    let compiled = verilog_ast_to_string(v_a.find_head().unwrap(), &v_a, 0);
     println!(
         "Verilog Compiled:\n\n{}",
-        verilog_ast_to_string(v_a.find_head().unwrap(), &v_a, 0)
+        compiled
     );
 
     if let Some(output) = output {
@@ -72,7 +73,9 @@ fn compile(input: std::path::PathBuf, output: Option<std::path::PathBuf>) -> i32
             source.read_to_end(&mut mock).unwrap();
             f.write_all(&mock).unwrap();
         } else {
-            println!("Couldn't find mock output, not pretending to compile.");
+            let mut f = std::fs::File::create(output).unwrap();
+            f.write_all(compiled.as_bytes()).unwrap();
+            f.write_all("\n".as_bytes()).unwrap();
         }
     }
 
