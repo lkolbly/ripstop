@@ -126,7 +126,7 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
                     .map(|n| verilog_ast_to_string(*n, tree, 0))
                     .collect::<Vec<_>>();
 
-                format!("{whitespace}reg[{}:0] {};", bits, vars.join(", "))
+                format!("{whitespace}reg[{}:0] {};", bits - 1, vars.join(", "))
             } else {
                 String::new()
             }
