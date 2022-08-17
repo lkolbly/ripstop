@@ -21,6 +21,18 @@ impl Display for Type {
     }
 }
 
+impl Type {
+    pub fn bit_size(&self) -> usize {
+        match self {
+            Self::None => {
+                panic!("None type doesn't have a size?");
+            }
+            Self::Bit => 1,
+            Self::Bits { size } => *size,
+        }
+    }
+}
+
 /// Struct for storing the context of an AST node, such as its position within the input string and the input string representing the node.
 #[derive(Clone)]
 pub struct StringContext {

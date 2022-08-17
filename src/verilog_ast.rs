@@ -25,14 +25,15 @@ pub enum VNode {
     ///Copypasta'd from ast::Node
     ModuleDeclaration {
         id: String,
-        in_values: Vec<String>,
-        out_values: Vec<String>,
+        /// Tuples of (variable name, number of bits)
+        in_values: Vec<(String, usize)>,
+        out_values: Vec<(String, usize)>,
     },
 
     ///Declares each child as a register in a chain (i.e. `reg a, b, c, d[31:0];`)
-    RegisterDeclare {},
-    /// Declares each child as a wire (i.e. `wire a, b, c`)
-    WireDeclare {},
+    RegisterDeclare { bits: usize },
+    /// Declares each child as a wire of the given number of bits (i.e. `wire[N:0] a, b, c`)
+    WireDeclare { bits: usize },
     VariableReference {
         var_id: String,
     },
@@ -108,36 +109,36 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
             let all_values: Vec<String> = {
                 let in_values = in_values
                     .iter()
-                    .map(|v| format!("{next_whitespace}input {v}"));
+                    .map(|(v, nbits)| format!("{next_whitespace}input[{}:0] {v}", nbits-1));
                 let out_values = out_values
                     .iter()
-                    .map(|v| format!("{next_whitespace}output {v}"));
+                    .map(|(v, nbits)| format!("{next_whitespace}output[{}:0] {v}", nbits-1));
                 in_values.chain(out_values).collect()
             };
             let all_values_string = all_values.join(",\n");
 
             format!("module {id} (\n{all_values_string}\n);\n{children_string}\nendmodule")
         }
-        VNode::RegisterDeclare {} => {
+        VNode::RegisterDeclare { bits } => {
             if let Some(children) = children {
                 let vars = children
                     .iter()
                     .map(|n| verilog_ast_to_string(*n, tree, 0))
                     .collect::<Vec<_>>();
 
-                format!("{whitespace}reg {};", vars.join(", "))
+                format!("{whitespace}reg[{}:0] {};", bits, vars.join(", "))
             } else {
                 String::new()
             }
         }
-        VNode::WireDeclare {} => {
+        VNode::WireDeclare { bits } => {
             if let Some(children) = children {
                 let vars = children
                     .iter()
                     .map(|n| verilog_ast_to_string(*n, tree, 0))
                     .collect::<Vec<_>>();
 
-                format!("{whitespace}wire {};", vars.join(", "))
+                format!("{whitespace}wire[{}:0] {};", bits - 1, vars.join(", "))
             } else {
                 String::new()
             }
