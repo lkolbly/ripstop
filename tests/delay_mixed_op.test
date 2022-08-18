@@ -1,0 +1,14 @@
+### CODE
+
+module delay_mixed_op(bits<4> a, bits<4> b) -> (bits<4> c) {
+    c[t] = a[t-1] + b[t-2];
+}
+
+### DATA
+rst,a in 4,b in 4,c out 4
+1,x,x,x
+0,x,2,x
+0,2,15,x
+0,3,1,4
+0,4,x,2 // 3 + 15 = 2 mod 16
+0,x,x,5

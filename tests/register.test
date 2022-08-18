@@ -1,3 +1,5 @@
+### CODE
+
 module register(bit write, bits<32> write_addr, bits<32> write_data, bit read, bits<32> read_addr) -> (bit read_valid, bits<32> read_data) {
     bits<32> register1;
     bits<32> register2;
@@ -24,3 +26,28 @@ module register(bit write, bits<32> write_addr, bits<32> write_data, bit read, b
         read_valid[t] = 0;
     }
 }
+
+### DATA
+rst,write in 1,write_addr in 32,write_data in 32,read in 1,read_addr in 32,read_valid out 1,read_data out 32
+1,0,0,x,0,0,x,x
+0,0,0,x,0,0,0,x
+
+// Read register 0
+0,0,0,x,1,0,0,x
+0,0,0,x,0,0,1,0
+
+// Write register 0x4
+0,1,4,1234,0,0,0,x
+0,0,0,x,0,x,0,x
+0,0,0,x,0,x,0,x
+0,0,0,x,0,x,0,x
+
+// Read it back
+0,0,0,x,1,4,0,x
+0,0,0,0,0,x,1,1234
+
+// Write register 0x0 w/ a simultaneous read
+0,1,0,4321,1,0,0,x
+0,0,x,x,1,0,1,0 // Should return the old value, but a subsequent read...
+0,0,x,x,1,4,1,4321 // ...should return the new value
+0,0,0,0,0,x,1,1234 // and the other register should remain untouched

@@ -1,3 +1,0 @@
-module delay_mixed_op(bits<4> a, bits<4> b) -> (bits<4> c) {
-    c[t] = a[t-1] + b[t-2];
-}

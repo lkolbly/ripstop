@@ -1,0 +1,15 @@
+### CODE
+
+module blinky() -> (bit led) {
+    led[0] = 1'd0;
+    led[t] = ~led[t-1];
+}
+
+### DATA
+rst,led out 1
+1,x
+1,0
+0,0
+0,1
+0,0
+0,1

@@ -1,3 +1,0 @@
-module blink() -> (bit led) {
-    led[t] = ~led[t-1];
-}

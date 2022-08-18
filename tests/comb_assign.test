@@ -1,0 +1,15 @@
+### CODE
+
+module comb_assign(bit a) -> (bit b) {
+    b[t] = a[t];
+}
+
+### DATA
+rst,a in 1,b out 1
+1,0,x
+1,0,x
+0,1,1
+0,1,1
+0,0,0
+0,1,1
+0,0,0

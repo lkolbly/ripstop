@@ -1,3 +1,0 @@
-module comb_add(bits<4> a, bits<4> b) -> (bits<4> c) {
-    c[t] = a[t] + b[t];
-}
