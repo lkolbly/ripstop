@@ -328,6 +328,8 @@ fn compile_expression(
     //The node in `vast` to append the generated subtree to
     vnode: NodeId,
     variables: &HashMap<String, VarBounds>,
+    // Time to shift by
+    time_shift: i64,
 ) -> Result<(), CompileError> {
     /// Adds a new node to `vast` with the given parent and returns the node's id
     fn add_node(
@@ -347,7 +349,7 @@ fn compile_expression(
     let new_vnode = match &ast.get_node(node).unwrap().data.node_type {
         ASTNodeType::VariableReference { var_id: _ } => {
             //First, generate the subtree with both a t offset and implicit index enabled
-            let mut var_ref_subtree = compile_var_ref(ast, node, variables, true, true)?;
+            let mut var_ref_subtree = compile_var_ref(ast, node, variables, true, true, time_shift)?;
 
             //The bottom of the subtree, where the children of this node will be added
             let mut var_ref_subtree_bottom = None;
@@ -388,7 +390,7 @@ fn compile_expression(
     if let Some(new_vnode) = new_vnode {
         if let Some(children) = &ast.get_node(node).unwrap().children {
             for child in children {
-                compile_expression(ast, *child, vast, new_vnode, variables)?;
+                compile_expression(ast, *child, vast, new_vnode, variables, time_shift)?;
             }
         }
     }
@@ -407,6 +409,7 @@ fn compile_var_ref(
     variables: &HashMap<String, VarBounds>,
     include_t_offset: bool,
     add_implicit_index: bool,
+    time_shift: i64,
 ) -> Result<Tree<VNode>, CompileError> {
     if let ASTNodeType::VariableReference { var_id } = &ast[var_ref].data.node_type {
         let bounds = variables.get(var_id).unwrap();
@@ -427,7 +430,7 @@ fn compile_var_ref(
                     }
                 }
 
-                variable_name(var_id, ast, t_offset_node.id)
+                variable_name(var_id, ast, t_offset_node.id, time_shift)
             } else {
                 var_id.clone()
             }
@@ -669,6 +672,22 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
                     let lhs = child_node.children.as_ref().unwrap()[0];
                     let rhs = child_node.children.as_ref().unwrap()[1];
 
+                    let is_combinatorial = tree.recurse_iterative::<_, CompileError, _, _>(
+                            rhs,
+                            |tree, node, children, _| {
+                                // If any children returned true, we're true
+                                if children.iter().any(|x| **x) {
+                                    return Ok(true);
+                                }
+
+                                match &tree.get_node(node).unwrap().data.node_type {
+                                    ASTNodeType::TimeOffsetRelative { offset } => Ok(*offset == 0),
+                                    _ => Ok(false),
+                                }
+                            },
+                            &(),
+                        )?;
+
                     match &tree.get_node(lhs).unwrap().data.node_type {
                         ASTNodeType::VariableReference { var_id } => {
                             //Can't assign to an input
@@ -693,7 +712,7 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
                                     if assignments.contains_key(var_id) {
                                         panic!("Tried assigning to a variable multiple times!");
                                     }
-                                    assignments.insert(var_id, (offset, rhs));
+                                    assignments.insert(var_id, (offset, is_combinatorial, rhs));
                                 }
                                 ASTNodeType::TimeOffsetAbsolute { time } => {
                                     // TODO: We should throw an error according to issue #15 if the user uses the wrong time
@@ -725,6 +744,7 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
     println!("Determined module assignments:");
     println!("Reset values: {:#?}", reset_values);
     println!("Assignments: {:#?}", assignments);
+    println!("Registers: {:#?}", registers);
 
     //Register chain creation for each variable
     if !registers.is_empty() {
@@ -735,7 +755,12 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
             };
             let reg_head = v_tree.new_node(var_node);
 
-            if timespec == 0 {
+            let is_combinatorial = match assignments.get(&variable_name) {
+                Some((_, x, _)) => *x,
+                None => true,
+            };
+
+            if timespec == 0 && is_combinatorial {
                 let declaration = VNode::WireDeclare { bits: variables[&variable_name].var_type.bit_size() };
                 let declaration = v_tree.new_node(declaration);
                 v_tree.append_to(v_head, declaration)?;
@@ -783,8 +808,8 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
 
                     // If the rhs has variables referenced at [t], then this is a combinatorial assign
                     // Otherwise, it is registered (and we assign the t-1 register to the output)
-                    let is_combinatorial_output = {
-                        let rhs = assignments.get(&name).unwrap().1;
+                    let is_combinatorial_output = assignments.get(&name).unwrap().1;/* {
+                        let rhs = assignments.get(&name).unwrap().2;
                         tree.recurse_iterative::<_, CompileError, _, _>(
                             rhs,
                             |tree, node, children, _| {
@@ -800,14 +825,15 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
                             },
                             &(),
                         )?
-                    };
-                    if is_combinatorial_output {
+                    };*/
+                    v_tree.append_tree(assign_node, &mut assign_index_0_tree)?;
+                    /*if is_combinatorial_output {
                         v_tree.append_tree(assign_node, &mut assign_index_0_tree)?;
                     } else {
                         let mut prev_ref =
                             compile_var_ref_from_string(&name, Some(-1), index.clone())?;
                         v_tree.append_tree(assign_node, &mut prev_ref)?;
-                    }
+                    }*/
 
                     /*v_tree.append_to(assign_node, assign_no_index)?;
                     v_tree.append_to(assign_node, assign_index_0)?;*/
@@ -823,12 +849,16 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
                 v_tree.append_to(head, assign_node)?;
             }
 
+            // TODO: Calculate the ref_range based on what variables we actually use
+            // (it may vary based on whether they're used in combinatorial or non-combinatorial variables)
+            let ref_range = offsets.lowest_ref..offsets.highest_ref;
+
             // Chaining:
             // var_neg1 <= var_0;
             // var_0 <= var_1;
             // var_1 <= var_2;
             // etc.
-            for i in offsets.lowest_ref..offsets.highest_ref {
+            for i in ref_range {
                 let mut lhs = compile_var_ref_from_string(&name, Some(i), index.clone())?;
 
                 let reset_value = if let Some(reset_value) = reset_values.get(&name) {
@@ -870,22 +900,44 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
         }
     }
 
+    // Register all the non-combinatorial variables
+    for (var_id, (relative_time, is_combinatorial, rhs)) in assignments.iter() {
+        if *is_combinatorial {
+            continue;
+        }
+        let mut lhs = compile_var_ref_from_string(var_id, Some(0), None)?;
+        let mut rhs = compile_var_ref_from_string(var_id, Some(1), None)?;
+
+        // TODO: Get reset value, if applicable
+
+        let reg_assign = v_tree.new_node(VNode::ClockAssign {  });
+        v_tree.append_tree(reg_assign, &mut lhs)?;
+        v_tree.append_tree(reg_assign, &mut rhs)?;
+        v_tree.append_to(clock_edge, reg_assign)?;
+    }
+
     // Compile the assignments
-    for (var_id, (relative_time, rhs)) in assignments.drain() {
+    for (var_id, (relative_time, is_combinatorial, rhs)) in assignments.drain() {
         let verilog_name = variable_name_relative(var_id, relative_time);
 
         // Create a variable reference to the lhs
         let lhs_vnode = {
-            let mut lhs_vnode = v_tree.new_node(VNode::VariableReference {
-                var_id: verilog_name.clone(),
-            });
+            if is_combinatorial {
+                v_tree.new_node(VNode::VariableReference {
+                    var_id: verilog_name.clone(),
+                })
+            } else {
+                v_tree.new_node(VNode::VariableReference {
+                    var_id: format!("{}_next", var_id),
+                })
+            }
             //If the lhs had an index above it created in v_tree, append lhs_vnode properly
             /*if let Some(idx) = lhs_index {
                 v_tree.append_to(idx, lhs_vnode)?;
                 lhs_vnode = idx;
             }*/
 
-            lhs_vnode
+            //lhs_vnode
         };
 
         let assign_vnode = v_tree.new_node(VNode::AssignKeyword {});
@@ -893,7 +945,7 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
 
         v_tree.append_to(assign_vnode, lhs_vnode)?;
 
-        compile_expression(tree, rhs, &mut v_tree, assign_vnode, &variables)?;
+        compile_expression(tree, rhs, &mut v_tree, assign_vnode, &variables, if is_combinatorial { 0 } else { 1 })?;
     }
 
     /*//User-defined logic compilation (uses the compile_expression function when encountering an expression)
@@ -1039,14 +1091,19 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
 }
 
 /// Generate a Verilog variable name for the variable `var_id` at the index given by the node at `offset_id` on `tree`.
-fn variable_name(var_id: &String, tree: &Tree<ASTNode>, offset_id: NodeId) -> String {
+fn variable_name(var_id: &String, tree: &Tree<ASTNode>, offset_id: NodeId, time_shift: i64) -> String {
     match tree.get_node(offset_id).unwrap().data.node_type {
-        ASTNodeType::TimeOffsetRelative { offset } => variable_name_relative(var_id, offset),
+        ASTNodeType::TimeOffsetRelative { offset } => variable_name_relative(var_id, offset + time_shift),
         ASTNodeType::TimeOffsetAbsolute { time } => todo!(),
         _ => unreachable!(),
     }
 }
 
 fn variable_name_relative(var_id: &str, index: i64) -> String {
-    format!("{}_{}", var_id, index.to_string().replace('-', "neg"))
+    if index == 1 {
+        format!("{}_next", var_id)
+    }
+    else {
+        format!("{}_{}", var_id, index.to_string().replace('-', "neg"))
+    }
 }
