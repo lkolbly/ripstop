@@ -1,0 +1,13 @@
+### CODE
+
+module delay(bits<4> a) -> (bits<4> b) {
+    b[t] = a[t-3];
+}
+
+### DATA
+rst,a in 4,b out 4
+1,0,x
+1,0,x
+0,1,x
+0,15,x
+0,0,x

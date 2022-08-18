@@ -905,6 +905,20 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
         if *is_combinatorial {
             continue;
         }
+
+        // Declare it (`wire x_next;`)
+        let var_node = VNode::VariableReference {
+            var_id: format!("{}_next", (*var_id).to_owned()),
+        };
+        let reg_head = v_tree.new_node(var_node);
+
+        let declaration = VNode::WireDeclare { bits: variables[*var_id].var_type.bit_size() };
+        let declaration = v_tree.new_node(declaration);
+        v_tree.append_to(v_head, declaration)?;
+
+        v_tree.append_to(declaration, reg_head)?;
+
+        // x_0 <= x_next
         let mut lhs = compile_var_ref_from_string(var_id, Some(0), None)?;
 
         let reset_value = if let Some(reset_value) = reset_values.get(var_id) {

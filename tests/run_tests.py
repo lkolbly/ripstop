@@ -153,6 +153,9 @@ def test_combined_file(rp_combinedtest_testname):
             elif line == "### DATA":
                 current_segment = "data"
                 segments[current_segment] = []
+            elif line == "### COMPILED":
+                current_segment = "compiled"
+                segments[current_segment] = []
             elif current_segment != None:
                 segments[current_segment].append(line)
         pass
@@ -180,14 +183,18 @@ def test_combined_file(rp_combinedtest_testname):
             "outputs": dut_outputs,
         }, test_data, f)
 
-    compiledf = compile_rp(codefile.filename)
-    with open(compiledf.filename, "r") as f:
-        compiled = f.read()
+    compiledf = None
+    if "compiled" in segments:
+        compiled = "\n".join(segments["compiled"])
+    else:
+        compiledf = compile_rp(codefile.filename)
+        with open(compiledf.filename, "r") as f:
+            compiled = f.read()
 
     with open(test_harness.filename, "r") as f:
         test = f.read()
 
-    print(compiledf.filename)
+    #print(compiledf.filename)
 
     # Concatenate the compiled output and the test into a new file
     target = TempFile()
@@ -203,7 +210,8 @@ def test_combined_file(rp_combinedtest_testname):
     stdout = subprocess.check_output(test_executable.filename, shell=True).decode("utf-8")
     assert "fail" not in stdout, test_harness.filename
 
-    compiledf.rm()
+    if compiledf is not None:
+        compiledf.rm()
     target.rm()
     test_harness.rm()
     codefile.rm()
