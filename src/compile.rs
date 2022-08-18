@@ -906,9 +906,36 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
             continue;
         }
         let mut lhs = compile_var_ref_from_string(var_id, Some(0), None)?;
-        let mut rhs = compile_var_ref_from_string(var_id, Some(1), None)?;
 
-        // TODO: Get reset value, if applicable
+        let reset_value = if let Some(reset_value) = reset_values.get(var_id) {
+            let reset_value = tree.get_node(*reset_value)?;
+            match &reset_value.data.node_type {
+                ASTNodeType::NumberLiteral(literal) => Some(*literal),
+                _ => {
+                    panic!("Reset value RHS must be a number literal");
+                }
+            }
+        } else {
+            None
+        };
+
+        let mut rhs = if let Some(reset_value) = reset_value {
+            let mut conditional_tree = Tree::new();
+            let conditional = conditional_tree.new_node(VNode::Ternary {});
+            let rst_ref = conditional_tree.new_node(VNode::VariableReference {
+                var_id: "rst".to_owned(),
+            });
+            let reset_value = conditional_tree.new_node(VNode::NumberLiteral {
+                literal: reset_value,
+            });
+            conditional_tree.append_to(conditional, rst_ref)?;
+            conditional_tree.append_to(conditional, reset_value)?;
+            let mut rhs = compile_var_ref_from_string(var_id, Some(1), None)?;
+            conditional_tree.append_tree(conditional, &mut rhs)?;
+            conditional_tree
+        } else {
+            compile_var_ref_from_string(&var_id, Some(1), None)?
+        };
 
         let reg_assign = v_tree.new_node(VNode::ClockAssign {  });
         v_tree.append_tree(reg_assign, &mut lhs)?;
