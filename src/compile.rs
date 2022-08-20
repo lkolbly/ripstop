@@ -395,6 +395,7 @@ fn compile_expression(
             },
             Some(vnode),
         ),
+        ASTNodeType::NumberLiteral(literal) => add_node(vast, VNode::NumberLiteral { literal: *literal }, Some(vnode)),
         _ => unimplemented!(),
     };
 

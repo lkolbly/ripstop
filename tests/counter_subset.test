@@ -1,0 +1,21 @@
+### CODE
+
+module counter_subset() -> (bits<4> out) {
+    bits<32> counter;
+    counter[0] = 32'd0;
+    counter[t] = counter[t-1] + 32'd1;
+    out[t] = counter[t][4:1];
+}
+
+### DATA
+rst,out out 4
+1,x
+1,0
+0,0
+0,0
+0,1
+0,1
+0,2
+0,2
+0,3
+0,3

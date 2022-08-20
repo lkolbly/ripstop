@@ -33,7 +33,7 @@ unary_operation = { unary_operator ~ unary_operand }
 unary_operator = { bitwise_inverse }
 bitwise_inverse = { "~" }
 
-binary_operand = _{ parenthetical_expression | indexed_variable | unary_operation }
+binary_operand = _{ parenthetical_expression | index_expression | indexed_variable | unary_operation | number_literal }
 binary_operation = { binary_operand ~ (binary_operator ~ binary_operand)+ }
 binary_operator = _{ addition | subtraction }
 addition = { "+" }
