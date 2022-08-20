@@ -1,0 +1,12 @@
+### CODE
+
+module bits_subset(bits<16> a) -> (bits<4> b) {
+    b[t] = a[t-1][13:10];
+}
+
+### DATA
+rst,a in 16,b out 4
+1,0,x
+0,43640,0
+0,4361,10
+0,0,4

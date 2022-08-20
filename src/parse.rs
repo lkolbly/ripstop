@@ -89,6 +89,31 @@ pub fn parse(toparse: &str) -> Tree<ASTNode> {
                 var_type: parse_type(inner_rules.next().unwrap()),
                 var_id: inner_rules.next().unwrap().as_str().to_string(),
             }),
+            Rule::index_expression => {
+                println!("{:#?}", inner_rules);
+
+                let indexee = inner_rules.next().unwrap();
+                let index = inner_rules.next().unwrap();
+
+                //let rules: Vec<_> = inner_rules.collect();
+                //assert_eq!(rules.len(), 2);
+
+                let indexee = parse_value(tree, indexee).unwrap();
+
+                // Get the index
+                let index = match index.as_rule() {
+                    Rule::bits_index => {
+                        Range::from_tree(index.into_inner().next().unwrap())
+                    }
+                    _ => {
+                        panic!("Second thingy must be a bits_index");
+                    }
+                };
+                let index = ASTNodeType::Index { high: index.high as usize, low: index.low as usize };
+                let index_node = tree.new_node(ASTNode::new(index, pair));
+                tree.append_to(index_node, indexee).unwrap();
+                return Some(index_node);
+            }
             Rule::EOI => None,
             Rule::number_literal => Some(ASTNodeType::NumberLiteral(NumberLiteral::from_tree(
                 pair.clone(),
@@ -183,6 +208,45 @@ impl SignedInteger {
     fn from_tree(tree: Pair<Rule>) -> Self {
         let full_str = tree.as_str();
         Self(full_str.parse().unwrap())
+    }
+}
+
+/// Represents a doubly-inclusive range, for example [6:4] to indicate bits
+/// 6, 5, and 4 of a bits.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Range {
+    pub low: u32,
+    pub high: u32,
+}
+
+impl Range {
+    fn from_tree(tree: Pair<Rule>) -> Self {
+        let rule = tree.as_rule();
+        let inner = tree.into_inner();
+        let children: Vec<_> = match rule {
+            Rule::range => {
+                inner.collect()
+            }
+            _ => panic!("Unexpected rule"),
+        };
+
+        if children.len() == 2 {
+            let high: u32 = children[0].as_str().parse().unwrap();
+            let low: u32 = children[1].as_str().parse().unwrap();
+            if low > high {
+                panic!("Low and high are swapped!");
+            }
+            Self {
+                low, high
+            }
+        } else if children.len() == 1 {
+            let val: u32 = children[0].as_str().parse().unwrap();
+            Self { low: val, high: val }
+        } else {
+            panic!("Unexpected # of children!");
+        }
+
+        //Self { low: 0, high: 5 }
     }
 }
 
@@ -301,6 +365,26 @@ impl NumberLiteral {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn test_parse_range() {
+        let tests = [
+            ("5", Range{low: 5, high: 5}),
+            ("6:0", Range{low: 0, high: 6}),
+            ("123:43", Range{low: 43, high: 123}),
+            //("1:2", Range{low: 43, high: 123}), // Should error
+        ];
+
+        for (test_case, expected) in tests.iter() {
+            let parsed = RipstopParser::parse(Rule::range, test_case)
+                .expect("Parse failed!")
+                .next()
+                .unwrap();
+
+            let literal = Range::from_tree(parsed);
+            assert_eq!(&literal, expected);
+        }
+    }
 
     #[test]
     fn test_parse_signed_integer() {

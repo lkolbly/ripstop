@@ -176,6 +176,20 @@ fn verify(
                 let lhs_t = tree.recurse_iterative(children[0], get_node_type, variables)?;
                 let rhs_t = tree.recurse_iterative(children[1], get_node_type, variables)?;
 
+                // Coerce bits<1> to bit
+                let lhs_t = match lhs_t {
+                    Type::Bits { size: 1 } => {
+                        Type::Bit
+                    }
+                    x => x,
+                };
+                let rhs_t = match rhs_t {
+                    Type::Bits { size: 1 } => {
+                        Type::Bit
+                    }
+                    x => x,
+                };
+
                 if lhs_t != rhs_t {
                     let rhs = &tree[children[1]];
                     return Err(CompileError::MismatchedTypes {
