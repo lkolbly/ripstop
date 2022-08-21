@@ -207,7 +207,7 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
             let condition = verilog_ast_to_string(children[0], tree, 0);
             let iftrue = verilog_ast_to_string(children[1], tree, 0);
             let iffalse = verilog_ast_to_string(children[2], tree, 0);
-            format!("{whitespace}{condition} ? ({iftrue}) : ({iffalse})")
+            format!("{whitespace}({condition}) ? ({iftrue}) : ({iffalse})")
         }
         VNode::NumberLiteral { literal } => {
             let size = literal.size_bits;

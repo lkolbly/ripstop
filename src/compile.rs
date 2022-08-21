@@ -1,5 +1,5 @@
 use crate::ast::{StringContext, Type};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::{
     ast::{ASTNode, ASTNodeType},
@@ -617,6 +617,7 @@ impl std::fmt::Debug for CompileError {
 
 #[derive(Debug)]
 struct AssignmentSet {
+    /// The tuple is (time offset, is combinatorial, tree)
     assignments: HashMap<String, (i64, bool, Tree<VNode>)>,
     reset_values: HashMap<String, NodeId>,
 }
@@ -728,6 +729,181 @@ fn compile_assign_node(
     Ok(assignments)
 }
 
+fn compile_condition(
+    tree: &Tree<ASTNode>,
+    node: NodeId,
+    variables: &HashMap<String, VarBounds>,
+) -> Result<Tree<VNode>, CompileError> {
+    let is_combinatorial = tree.recurse_iterative::<_, CompileError, _, _>(
+        node,
+        |tree, node, children, _| {
+            // If any children returned true, we're true
+            if children.iter().any(|x| **x) {
+                return Ok(true);
+            }
+
+            match &tree.get_node(node).unwrap().data.node_type {
+                ASTNodeType::TimeOffsetRelative { offset } => Ok(*offset == 0),
+                _ => Ok(false),
+            }
+        },
+        &(),
+    )?;
+
+    let (_, tree) =
+        compile_expression(tree, node, variables, if is_combinatorial { 0 } else { 1 })?;
+    Ok(tree)
+}
+
+fn compile_conditional_chain_recursive(
+    tree: &Tree<ASTNode>,
+    children: &[NodeId],
+    variables: &HashMap<String, VarBounds>,
+    in_values: &Vec<(String, usize)>,
+) -> Result<AssignmentSet, CompileError> {
+    let is_input = |name: &str| in_values.iter().any(|(in_name, _)| in_name == name);
+    //let mut assignments = AssignmentSet::new();
+
+    assert!(children.len() >= 1);
+
+    if let ASTNodeType::Block = tree.get_node(children[0]).unwrap().data.node_type {
+        // Actually, this is the final else
+        println!("Found else");
+        if children.len() > 1 {
+            panic!("There are more children beyond the else!");
+        }
+        let block = compile_block_to_assignments(
+            tree,
+            tree.get_node(children[0]).unwrap(),
+            variables,
+            in_values,
+        )?;
+        println!("Assignments: {:?}", block);
+
+        Ok(block)
+    } else {
+        if children.len() < 2 {
+            panic!("Not enough children!");
+        }
+        let condition = compile_condition(tree, children[0], variables)?;
+        let block = children[1];
+        let block_node = tree.get_node(block).unwrap();
+        if let ASTNodeType::Block = block_node.data.node_type {
+            // This is a block, as we expect
+        } else {
+            panic!("Node following condition was not a Block");
+        }
+        let iftrue = compile_block_to_assignments(tree, block_node, variables, in_values)?;
+        println!("Condition:\n{}", condition);
+        println!("If true: {:?}", iftrue);
+
+        let iffalse =
+            compile_conditional_chain_recursive(tree, &children[2..], variables, in_values)?;
+
+        // For each variable in either assignment set, build a verilog ternary
+        let full_variable_set: HashSet<_> = iftrue
+            .assignments
+            .iter()
+            .chain(iffalse.assignments.iter())
+            .map(|(k, v)| k)
+            .collect();
+        let mut assignments = AssignmentSet::new();
+        for var in full_variable_set.iter() {
+            // TODO: If the conditional is entirely combinatorial, then all branches MUST be specified
+            let mut iftrue = iftrue
+                .assignments
+                .get(*var)
+                .map(|x| x.to_owned())
+                .unwrap_or_else(|| {
+                    (
+                        0,
+                        false,
+                        compile_var_ref_from_string(var, Some(0), None).unwrap(),
+                    )
+                });
+            let mut iffalse = iffalse
+                .assignments
+                .get(*var)
+                .map(|x| x.to_owned())
+                .unwrap_or_else(|| {
+                    (
+                        0,
+                        false,
+                        compile_var_ref_from_string(var, Some(0), None).unwrap(),
+                    )
+                });
+
+            let mut ternary_tree = Tree::new();
+            let ternary = ternary_tree.new_node(VNode::Ternary {});
+            let mut condition = condition.clone();
+            ternary_tree.append_tree(ternary, &mut condition)?;
+            ternary_tree.append_tree(ternary, &mut iftrue.2)?;
+            ternary_tree.append_tree(ternary, &mut iffalse.2)?;
+
+            assignments.assignments.insert(
+                var.to_string(),
+                (
+                    std::cmp::max(iftrue.0, iffalse.0),
+                    iftrue.1 || iffalse.1,
+                    ternary_tree,
+                ),
+            );
+        }
+
+        Ok(assignments)
+    }
+}
+
+fn compile_conditional_node(
+    tree: &Tree<ASTNode>,
+    node: &crate::tree::Node<ASTNode>,
+    variables: &HashMap<String, VarBounds>,
+    in_values: &Vec<(String, usize)>,
+) -> Result<AssignmentSet, CompileError> {
+    let is_input = |name: &str| in_values.iter().any(|(in_name, _)| in_name == name);
+    let mut assignments = AssignmentSet::new();
+
+    Ok(compile_conditional_chain_recursive(
+        tree,
+        node.children.as_ref().unwrap(),
+        variables,
+        in_values,
+    )?)
+}
+
+fn compile_block_to_assignments(
+    tree: &Tree<ASTNode>,
+    node: &crate::tree::Node<ASTNode>,
+    variables: &HashMap<String, VarBounds>,
+    in_values: &Vec<(String, usize)>,
+) -> Result<AssignmentSet, CompileError> {
+    let is_input = |name: &str| in_values.iter().any(|(in_name, _)| in_name == name);
+    let mut assignments = AssignmentSet::new();
+    if let Some(children) = &node.children {
+        for c in children {
+            let child_node = tree.get_node(*c).unwrap();
+            match child_node.data.node_type {
+                ASTNodeType::Assign => {
+                    let new_assignment =
+                        compile_assign_node(tree, child_node, variables, &is_input)?;
+                    assignments.merge(new_assignment);
+                }
+                ASTNodeType::Conditional => {
+                    let new_assignment =
+                        compile_conditional_node(tree, child_node, variables, in_values)?;
+                    assignments.merge(new_assignment);
+                }
+                ASTNodeType::VariableDeclaration {
+                    var_type: _,
+                    var_id: _,
+                } => {}
+                _ => unreachable!(),
+            }
+        }
+    }
+    Ok(assignments)
+}
+
 ///Compiles a single module into Verilog from an AST
 pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileError> {
     //A little bit of a workaround in order to make this work well with the ? operator
@@ -803,26 +979,7 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
     // Figure out what each value is set to
     //let mut reset_values = HashMap::new();
     //let mut assignments = HashMap::new();
-    let mut assignments = AssignmentSet::new();
-    if let Some(children) = &tree[head].children {
-        for c in children {
-            let child_node = tree.get_node(*c).unwrap();
-            match child_node.data.node_type {
-                ASTNodeType::Assign => {
-                    let new_assignment =
-                        compile_assign_node(tree, child_node, &variables, is_input)?;
-                    assignments.merge(new_assignment);
-                }
-                ASTNodeType::VariableDeclaration {
-                    var_type: _,
-                    var_id: _,
-                } => {}
-                _ => unreachable!(),
-            }
-        }
-    } else {
-        println!("Module {} has no children", id);
-    }
+    let mut assignments = compile_block_to_assignments(tree, &tree[head], &variables, &in_values)?;
 
     println!("Determined module assignments:");
     println!("Assignment set: {:#?}", assignments);
