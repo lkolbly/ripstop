@@ -114,6 +114,13 @@ pub fn parse(toparse: &str) -> Tree<ASTNode> {
                 tree.append_to(index_node, indexee).unwrap();
                 return Some(index_node);
             }
+            Rule::conditional => {
+                println!("{:#?}", inner_rules);
+                Some(ASTNodeType::Conditional)
+            }
+            Rule::conditional_block => {
+                Some(ASTNodeType::Block)
+            }
             Rule::EOI => None,
             Rule::number_literal => Some(ASTNodeType::NumberLiteral(NumberLiteral::from_tree(
                 pair.clone(),

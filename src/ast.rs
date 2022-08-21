@@ -128,6 +128,16 @@ pub enum ASTNodeType {
         time: i64,
     },
 
+    /// Conditional nodes may have many children nodes.
+    /// The nodes will alternate between the condition (as an expression)
+    /// and the block of statements for that condition. If there is an
+    /// unconditional else, it will appear as an extra condition_block
+    /// at the end.
+    Conditional,
+
+    /// Just combines multiple statements into one
+    Block,
+
     //Unary operators only have one child
     //Maybe extract operators into their own enum of sorts (or maybe just unary/binary ops)? Might not be helpful though
     BitwiseInverse,
