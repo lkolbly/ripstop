@@ -7,6 +7,7 @@ use std::io::{Read, Write};
 
 mod ast;
 mod compile;
+mod ir;
 mod parse;
 mod tree;
 mod verilog_ast;
