@@ -339,12 +339,12 @@ fn compile_expression(
     //The current node in `ast` used to generate a subtree for `vast`
     node: NodeId,
     vast: &mut Tree<VNode>,
-    //The node in `vast` to append the generated subtree to
-    vnode: NodeId,
+    //The node in `vast` to append the generated subtree to, if specified
+    vnode: Option<NodeId>,
     variables: &HashMap<String, VarBounds>,
     // Time to shift by
     time_shift: i64,
-) -> Result<(), CompileError> {
+) -> Result<Option<NodeId>, CompileError> {
     /// Adds a new node to `vast` with the given parent and returns the node's id
     fn add_node(
         vast: &mut Tree<VNode>,
@@ -375,17 +375,19 @@ fn compile_expression(
             }
 
             //Finally, append the generated subtree to `vast` and apply the offset accordingly
-            if let Some(var_ref_subtree_bottom) = &mut var_ref_subtree_bottom {
-                *var_ref_subtree_bottom += vast
-                    .append_tree(vnode, &mut var_ref_subtree)
-                    .map_err(|err| CompileError::from(err))?;
+            if let Some(parent) = vnode {
+                if let Some(var_ref_subtree_bottom) = &mut var_ref_subtree_bottom {
+                    *var_ref_subtree_bottom += vast
+                        .append_tree(parent, &mut var_ref_subtree)
+                        .map_err(|err| CompileError::from(err))?;
+                }
             }
 
             Ok(var_ref_subtree_bottom)
         }
-        ASTNodeType::BitwiseInverse => add_node(vast, VNode::BitwiseInverse {}, Some(vnode)),
-        ASTNodeType::Add => add_node(vast, VNode::Add {}, Some(vnode)),
-        ASTNodeType::Subtract => add_node(vast, VNode::Subtract {}, Some(vnode)),
+        ASTNodeType::BitwiseInverse => add_node(vast, VNode::BitwiseInverse {}, vnode),
+        ASTNodeType::Add => add_node(vast, VNode::Add {}, vnode),
+        ASTNodeType::Subtract => add_node(vast, VNode::Subtract {}, vnode),
         ASTNodeType::TimeOffsetRelative { offset: _ } => Ok(None),
         ASTNodeType::Index { high, low } => add_node(
             vast,
@@ -393,9 +395,9 @@ fn compile_expression(
                 high: *high,
                 low: *low,
             },
-            Some(vnode),
+            vnode,
         ),
-        ASTNodeType::NumberLiteral(literal) => add_node(vast, VNode::NumberLiteral { literal: *literal }, Some(vnode)),
+        ASTNodeType::NumberLiteral(literal) => add_node(vast, VNode::NumberLiteral { literal: *literal }, vnode),
         _ => unimplemented!(),
     };
 
@@ -405,12 +407,12 @@ fn compile_expression(
     if let Some(new_vnode) = new_vnode {
         if let Some(children) = &ast.get_node(node).unwrap().children {
             for child in children {
-                compile_expression(ast, *child, vast, new_vnode, variables, time_shift)?;
+                compile_expression(ast, *child, vast, Some(new_vnode), variables, time_shift)?;
             }
         }
     }
 
-    Ok(())
+    Ok(new_vnode)
 }
 
 /// Compiles the supplied VariableReference into a suitable Verilog subtree
@@ -727,7 +729,8 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
                                     if assignments.contains_key(var_id) {
                                         panic!("Tried assigning to a variable multiple times!");
                                     }
-                                    assignments.insert(var_id, (offset, is_combinatorial, rhs));
+                                    let rhs = compile_expression(tree, rhs, &mut v_tree, None, &variables, if is_combinatorial { 0 } else { 1 })?;
+                                    assignments.insert(var_id, (offset, is_combinatorial, rhs.unwrap()));
                                 }
                                 ASTNodeType::TimeOffsetAbsolute { time } => {
                                     // TODO: We should throw an error according to issue #15 if the user uses the wrong time
@@ -1001,7 +1004,8 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
 
         v_tree.append_to(assign_vnode, lhs_vnode)?;
 
-        compile_expression(tree, rhs, &mut v_tree, assign_vnode, &variables, if is_combinatorial { 0 } else { 1 })?;
+        //compile_expression(tree, rhs, &mut v_tree, Some(assign_vnode), &variables, if is_combinatorial { 0 } else { 1 })?;
+        v_tree.append_to(assign_vnode, rhs)?;
     }
 
     /*//User-defined logic compilation (uses the compile_expression function when encountering an expression)
