@@ -31,9 +31,13 @@ pub enum VNode {
     },
 
     ///Declares each child as a register in a chain (i.e. `reg a, b, c, d[31:0];`)
-    RegisterDeclare { bits: usize },
+    RegisterDeclare {
+        bits: usize,
+    },
     /// Declares each child as a wire of the given number of bits (i.e. `wire[N:0] a, b, c`)
-    WireDeclare { bits: usize },
+    WireDeclare {
+        bits: usize,
+    },
     VariableReference {
         var_id: String,
     },
@@ -109,10 +113,10 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
             let all_values: Vec<String> = {
                 let in_values = in_values
                     .iter()
-                    .map(|(v, nbits)| format!("{next_whitespace}input[{}:0] {v}", nbits-1));
+                    .map(|(v, nbits)| format!("{next_whitespace}input[{}:0] {v}", nbits - 1));
                 let out_values = out_values
                     .iter()
-                    .map(|(v, nbits)| format!("{next_whitespace}output[{}:0] {v}", nbits-1));
+                    .map(|(v, nbits)| format!("{next_whitespace}output[{}:0] {v}", nbits - 1));
                 in_values.chain(out_values).collect()
             };
             let all_values_string = all_values.join(",\n");

@@ -102,14 +102,15 @@ pub fn parse(toparse: &str) -> Tree<ASTNode> {
 
                 // Get the index
                 let index = match index.as_rule() {
-                    Rule::bits_index => {
-                        Range::from_tree(index.into_inner().next().unwrap())
-                    }
+                    Rule::bits_index => Range::from_tree(index.into_inner().next().unwrap()),
                     _ => {
                         panic!("Second thingy must be a bits_index");
                     }
                 };
-                let index = ASTNodeType::Index { high: index.high as usize, low: index.low as usize };
+                let index = ASTNodeType::Index {
+                    high: index.high as usize,
+                    low: index.low as usize,
+                };
                 let index_node = tree.new_node(ASTNode::new(index, pair));
                 tree.append_to(index_node, indexee).unwrap();
                 return Some(index_node);
@@ -118,9 +119,7 @@ pub fn parse(toparse: &str) -> Tree<ASTNode> {
                 println!("{:#?}", inner_rules);
                 Some(ASTNodeType::Conditional)
             }
-            Rule::conditional_block => {
-                Some(ASTNodeType::Block)
-            }
+            Rule::conditional_block => Some(ASTNodeType::Block),
             Rule::EOI => None,
             Rule::number_literal => Some(ASTNodeType::NumberLiteral(NumberLiteral::from_tree(
                 pair.clone(),
@@ -231,9 +230,7 @@ impl Range {
         let rule = tree.as_rule();
         let inner = tree.into_inner();
         let children: Vec<_> = match rule {
-            Rule::range => {
-                inner.collect()
-            }
+            Rule::range => inner.collect(),
             _ => panic!("Unexpected rule"),
         };
 
@@ -243,12 +240,13 @@ impl Range {
             if low > high {
                 panic!("Low and high are swapped!");
             }
-            Self {
-                low, high
-            }
+            Self { low, high }
         } else if children.len() == 1 {
             let val: u32 = children[0].as_str().parse().unwrap();
-            Self { low: val, high: val }
+            Self {
+                low: val,
+                high: val,
+            }
         } else {
             panic!("Unexpected # of children!");
         }
@@ -376,9 +374,9 @@ mod test {
     #[test]
     fn test_parse_range() {
         let tests = [
-            ("5", Range{low: 5, high: 5}),
-            ("6:0", Range{low: 0, high: 6}),
-            ("123:43", Range{low: 43, high: 123}),
+            ("5", Range { low: 5, high: 5 }),
+            ("6:0", Range { low: 0, high: 6 }),
+            ("123:43", Range { low: 43, high: 123 }),
             //("1:2", Range{low: 43, high: 123}), // Should error
         ];
 

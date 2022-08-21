@@ -56,10 +56,7 @@ fn compile(input: std::path::PathBuf, output: Option<std::path::PathBuf>) -> i32
     println!("Bare tree:\n\n{}\n\n", v_a);
 
     let compiled = verilog_ast_to_string(v_a.find_head().unwrap(), &v_a, 0);
-    println!(
-        "Verilog Compiled:\n\n{}",
-        compiled
-    );
+    println!("Verilog Compiled:\n\n{}", compiled);
 
     if let Some(output) = output {
         // Do a fake compilation
