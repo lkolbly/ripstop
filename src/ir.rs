@@ -63,6 +63,7 @@ impl VariableReference {
 pub enum Expression {
     UnaryOperation {
         operation: UnaryOperator,
+        operatee: Box<Expression>,
     },
 
     BinaryOperation {
@@ -90,10 +91,21 @@ impl Expression {
                 lhs: Self::from_ast(ast, ast.get_child_node(node, 0).unwrap().id),
                 rhs: Self::from_ast(ast, ast.get_child_node(node, 1).unwrap().id),
             },
+            ASTNodeType::BitwiseInverse => Self::UnaryOperation {
+                operation: UnaryOperator::Negation,
+                operatee: Self::from_ast(ast, ast.get_first_child(node).unwrap().id),
+            },
             ASTNodeType::VariableReference { var_id } => {
                 Self::VariableReference(VariableReference::from_ast(ast, node))
             }
             ASTNodeType::NumberLiteral(literal) => Expression::NumberLiteral(*literal),
+            ASTNodeType::Index { high, low } => Expression::UnaryOperation {
+                operation: UnaryOperator::Index(Range {
+                    low: *low as u32,
+                    high: *high as u32,
+                }),
+                operatee: Self::from_ast(ast, ast.get_first_child(node).unwrap().id),
+            },
             _ => {
                 todo!();
             }
@@ -112,6 +124,12 @@ impl Expression {
                 lhs.shift_time(offset);
                 rhs.shift_time(offset);
             }
+            Self::UnaryOperation {
+                operation,
+                operatee,
+            } => {
+                operatee.shift_time(offset);
+            }
             Self::VariableReference(reference) => match &mut reference.time {
                 TimeReference::Absolute(_) => {
                     panic!("Can't shift time of an absolute time (reset value on RHS?)");
@@ -120,6 +138,7 @@ impl Expression {
                     *varoff += offset;
                 }
             },
+            Self::NumberLiteral(_) => {}
             _ => unimplemented!(),
         }
     }
@@ -141,6 +160,10 @@ impl Expression {
                     (None, None) => None,
                 }
             }
+            Self::UnaryOperation {
+                operation,
+                operatee,
+            } => operatee.get_oldest_reference(variable),
             Self::VariableReference(reference) => {
                 if reference.variable == variable {
                     if let TimeReference::Relative(offset) = reference.time {
@@ -152,6 +175,7 @@ impl Expression {
                     None
                 }
             }
+            Self::NumberLiteral(_) => None,
             _ => {
                 unimplemented!();
             }
@@ -167,9 +191,14 @@ impl Expression {
                 lhs,
                 rhs,
             } => lhs.is_combinatorial() || rhs.is_combinatorial(),
+            Self::UnaryOperation {
+                operation,
+                operatee,
+            } => operatee.is_combinatorial(),
             Self::VariableReference(reference) => reference.time == TimeReference::Relative(0),
+            Self::NumberLiteral(_) => false,
             _ => {
-                unimplemented!();
+                unimplemented!("Can't determine whether {:?} is combinatorial", self);
             }
         }
     }

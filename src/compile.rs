@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
     ast::{ASTNode, ASTNodeType},
-    ir::{Expression, Module},
+    ir::{BinaryOperator, Expression, Module, UnaryOperator},
     tree::{NodeId, Tree, TreeError},
     verilog_ast::{AlwaysBeginTriggerType, VNode},
 };
@@ -340,11 +340,27 @@ fn compile_ir_expression(expr: &Expression) -> Result<Tree<VNode>, CompileError>
             lhs,
             rhs,
         } => {
-            let node = vast.new_node(VNode::Add {});
+            let node = vast.new_node(match operation {
+                BinaryOperator::Addition => VNode::Add {},
+            });
             let mut lhs = compile_ir_expression(lhs)?;
             let mut rhs = compile_ir_expression(rhs)?;
             vast.append_tree(node, &mut lhs);
             vast.append_tree(node, &mut rhs);
+        }
+        Expression::UnaryOperation {
+            operation,
+            operatee,
+        } => {
+            let node = vast.new_node(match operation {
+                UnaryOperator::Negation => VNode::BitwiseInverse {},
+                UnaryOperator::Index(range) => VNode::Index {
+                    high: range.high as usize,
+                    low: range.low as usize,
+                },
+            });
+            let mut lhs = compile_ir_expression(operatee)?;
+            vast.append_tree(node, &mut lhs)?;
         }
         Expression::VariableReference(reference) => {
             // Get t-offset
@@ -365,6 +381,9 @@ fn compile_ir_expression(expr: &Expression) -> Result<Tree<VNode>, CompileError>
 
             let vref = variable_name_relative(&reference.variable, t_offset);
             let node = vast.new_node(VNode::VariableReference { var_id: vref });
+        }
+        Expression::NumberLiteral(literal) => {
+            vast.new_node(VNode::NumberLiteral { literal: *literal });
         }
         _ => {
             unimplemented!();
@@ -1158,17 +1177,19 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
                     v_tree.append_to(assign_node, assign_index_0)?;*/
 
                     // Go back and declare the variable
-                    let var_node = VNode::VariableReference {
-                        var_id: variable_name_relative(name, 0),
-                    };
-                    let reg_head = v_tree.new_node(var_node);
-                    let declaration = VNode::RegisterDeclare {
-                        bits: module.variables[name].bit_size(),
-                    };
-                    let declaration = v_tree.new_node(declaration);
-                    v_tree.append_to(v_head, declaration)?;
+                    if is_combinatorial_output {
+                        let var_node = VNode::VariableReference {
+                            var_id: variable_name_relative(name, 0),
+                        };
+                        let reg_head = v_tree.new_node(var_node);
+                        let declaration = VNode::WireDeclare {
+                            bits: module.variables[name].bit_size(),
+                        };
+                        let declaration = v_tree.new_node(declaration);
+                        v_tree.append_to(v_head, declaration)?;
 
-                    v_tree.append_to(declaration, reg_head)?;
+                        v_tree.append_to(declaration, reg_head)?;
+                    }
                 } else {
                     // The opposite is necessary for inputs:
                     // assign in_0 = in;
@@ -1318,6 +1339,19 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
         v_tree.append_tree(reg_assign, &mut lhs)?;
         v_tree.append_tree(reg_assign, &mut rhs)?;
         v_tree.append_to(clock_edge, reg_assign)?;
+
+        // Go back and declare the variable
+        let var_node = VNode::VariableReference {
+            var_id: variable_name_relative(var_id, 0),
+        };
+        let reg_head = v_tree.new_node(var_node);
+        let declaration = VNode::RegisterDeclare {
+            bits: module.variables[var_id].bit_size(),
+        };
+        let declaration = v_tree.new_node(declaration);
+        v_tree.append_to(v_head, declaration)?;
+
+        v_tree.append_to(declaration, reg_head)?;
     }
 
     // Compile the assignments
@@ -1357,6 +1391,20 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
         } else {
             let mut rhs = compile_ir_expression(rhs)?;
             v_tree.append_tree(assign_vnode, &mut rhs)?;
+        }
+
+        if rhs.is_combinatorial() && !is_output(var_id) {
+            let var_node = VNode::VariableReference {
+                var_id: variable_name_relative(var_id, 0),
+            };
+            let reg_head = v_tree.new_node(var_node);
+            let declaration = VNode::WireDeclare {
+                bits: module.variables[var_id].bit_size(),
+            };
+            let declaration = v_tree.new_node(declaration);
+            v_tree.append_to(v_head, declaration)?;
+
+            v_tree.append_to(declaration, reg_head)?;
         }
     }
 
