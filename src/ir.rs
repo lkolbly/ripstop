@@ -95,7 +95,7 @@ impl Expression {
                 operation: UnaryOperator::Negation,
                 operatee: Self::from_ast(ast, ast.get_first_child(node).unwrap().id),
             },
-            ASTNodeType::VariableReference { var_id } => {
+            ASTNodeType::VariableReference { var_id: _ } => {
                 Self::VariableReference(VariableReference::from_ast(ast, node))
             }
             ASTNodeType::NumberLiteral(literal) => Expression::NumberLiteral(*literal),
@@ -117,7 +117,7 @@ impl Expression {
     pub fn shift_time(&mut self, offset: i64) {
         match self {
             Self::BinaryOperation {
-                operation,
+                operation: _,
                 lhs,
                 rhs,
             } => {
@@ -125,7 +125,7 @@ impl Expression {
                 rhs.shift_time(offset);
             }
             Self::UnaryOperation {
-                operation,
+                operation: _,
                 operatee,
             } => {
                 operatee.shift_time(offset);
@@ -156,7 +156,7 @@ impl Expression {
     fn get_oldest_reference(&self, variable: &str) -> Option<i64> {
         match self {
             Self::BinaryOperation {
-                operation,
+                operation: _,
                 lhs,
                 rhs,
             } => {
@@ -170,7 +170,7 @@ impl Expression {
                 }
             }
             Self::UnaryOperation {
-                operation,
+                operation: _,
                 operatee,
             } => operatee.get_oldest_reference(variable),
             Self::Ternary {
@@ -188,13 +188,12 @@ impl Expression {
                     (None, Some(b)) => Some(b),
                     (None, None) => None,
                 };
-                let min = match (min, c) {
+                match (min, c) {
                     (Some(min), Some(b)) => Some(std::cmp::min(min, b)),
                     (Some(min), None) => Some(min),
                     (None, Some(b)) => Some(b),
                     (None, None) => None,
-                };
-                min
+                }
             }
             Self::VariableReference(reference) => {
                 if reference.variable == variable {
@@ -219,12 +218,12 @@ impl Expression {
     pub fn is_combinatorial(&self) -> bool {
         match self {
             Self::BinaryOperation {
-                operation,
+                operation: _,
                 lhs,
                 rhs,
             } => lhs.is_combinatorial() || rhs.is_combinatorial(),
             Self::UnaryOperation {
-                operation,
+                operation: _,
                 operatee,
             } => operatee.is_combinatorial(),
             Self::Ternary {
@@ -243,12 +242,12 @@ impl Expression {
     fn depends_on_future(&self) -> bool {
         match self {
             Self::BinaryOperation {
-                operation,
+                operation: _,
                 lhs,
                 rhs,
             } => lhs.depends_on_future() || rhs.depends_on_future(),
             Self::UnaryOperation {
-                operation,
+                operation: _,
                 operatee,
             } => operatee.depends_on_future(),
             Self::Ternary {
@@ -313,7 +312,7 @@ impl Block {
                             }
                         }
                         TimeReference::Relative(offset) => {
-                            let mut rhs = Expression::from_ast(
+                            let rhs = Expression::from_ast(
                                 ast,
                                 ast.get_child_node(*child, 1).unwrap().id,
                             );
@@ -362,7 +361,7 @@ impl Block {
                 // This is an unconditional else
                 Block::from_ast_with_offsets(
                     ast,
-                    &ast.get_node(children[0])
+                    ast.get_node(children[0])
                         .unwrap()
                         .children
                         .as_ref()
@@ -375,7 +374,7 @@ impl Block {
                 let condition = Expression::from_ast(ast, children[0]);
                 let mut iftrue = Block::from_ast_with_offsets(
                     ast,
-                    &ast.get_node(children[1])
+                    ast.get_node(children[1])
                         .unwrap()
                         .children
                         .as_ref()
@@ -458,8 +457,8 @@ impl Block {
 
     pub fn variable_reference_range(&self, varname: &str) -> std::ops::Range<i64> {
         let mut min = std::i64::MAX;
-        let mut max = 0; //std::i64::MIN;
-        for (k, v) in self.assignments.iter() {
+        let max = 0;
+        for (_, v) in self.assignments.iter() {
             min = std::cmp::min(min, v.get_oldest_reference(varname).unwrap_or(0));
         }
 
