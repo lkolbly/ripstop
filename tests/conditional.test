@@ -2,9 +2,9 @@
 
 module conditional(bit selector, bits<4> a, bits<4> b) -> (bits<4> c) {
     if selector[t] {
-        c[t] = a[t];
-    } else {
         c[t] = b[t];
+    } else {
+        c[t] = a[t];
     }
 }
 

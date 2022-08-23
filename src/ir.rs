@@ -130,6 +130,15 @@ impl Expression {
             } => {
                 operatee.shift_time(offset);
             }
+            Self::Ternary {
+                condition,
+                lhs,
+                rhs,
+            } => {
+                condition.shift_time(offset);
+                lhs.shift_time(offset);
+                rhs.shift_time(offset);
+            }
             Self::VariableReference(reference) => match &mut reference.time {
                 TimeReference::Absolute(_) => {
                     panic!("Can't shift time of an absolute time (reset value on RHS?)");
@@ -164,6 +173,29 @@ impl Expression {
                 operation,
                 operatee,
             } => operatee.get_oldest_reference(variable),
+            Self::Ternary {
+                condition,
+                lhs,
+                rhs,
+            } => {
+                let a = condition.get_oldest_reference(variable);
+                let b = lhs.get_oldest_reference(variable);
+                let c = rhs.get_oldest_reference(variable);
+                let min = a;
+                let min = match (min, b) {
+                    (Some(min), Some(b)) => Some(std::cmp::min(min, b)),
+                    (Some(min), None) => Some(min),
+                    (None, Some(b)) => Some(b),
+                    (None, None) => None,
+                };
+                let min = match (min, c) {
+                    (Some(min), Some(b)) => Some(std::cmp::min(min, b)),
+                    (Some(min), None) => Some(min),
+                    (None, Some(b)) => Some(b),
+                    (None, None) => None,
+                };
+                min
+            }
             Self::VariableReference(reference) => {
                 if reference.variable == variable {
                     if let TimeReference::Relative(offset) = reference.time {
@@ -195,10 +227,45 @@ impl Expression {
                 operation,
                 operatee,
             } => operatee.is_combinatorial(),
+            Self::Ternary {
+                condition,
+                lhs,
+                rhs,
+            } => condition.is_combinatorial() || lhs.is_combinatorial() || rhs.is_combinatorial(),
             Self::VariableReference(reference) => reference.time == TimeReference::Relative(0),
             Self::NumberLiteral(_) => false,
             _ => {
                 unimplemented!("Can't determine whether {:?} is combinatorial", self);
+            }
+        }
+    }
+
+    fn depends_on_future(&self) -> bool {
+        match self {
+            Self::BinaryOperation {
+                operation,
+                lhs,
+                rhs,
+            } => lhs.depends_on_future() || rhs.depends_on_future(),
+            Self::UnaryOperation {
+                operation,
+                operatee,
+            } => operatee.depends_on_future(),
+            Self::Ternary {
+                condition,
+                lhs,
+                rhs,
+            } => {
+                condition.depends_on_future() || lhs.depends_on_future() || rhs.depends_on_future()
+            }
+            Self::VariableReference(VariableReference {
+                time: TimeReference::Relative(offset),
+                ..
+            }) => *offset > 0,
+            Self::VariableReference(_) => false,
+            Self::NumberLiteral(_) => false,
+            _ => {
+                unimplemented!();
             }
         }
     }
@@ -211,6 +278,26 @@ pub struct Block {
 
 impl Block {
     fn from_ast(ast: &Tree<ASTNode>, children: &[NodeId], declaration_allowed: bool) -> Self {
+        let mut assignments = Self::from_ast_with_offsets(ast, children, declaration_allowed);
+        Self {
+            assignments: assignments
+                .drain()
+                .map(|(variable, (offset, mut expr))| {
+                    expr.shift_time(-offset);
+                    if expr.depends_on_future() {
+                        panic!("Expression depends on the future!");
+                    }
+                    (variable, expr)
+                })
+                .collect(),
+        }
+    }
+
+    fn from_ast_with_offsets(
+        ast: &Tree<ASTNode>,
+        children: &[NodeId],
+        declaration_allowed: bool,
+    ) -> HashMap<String, (i64, Box<Expression>)> {
         let mut assignments = HashMap::new();
         for child in children.iter() {
             match &ast.get_node(*child).unwrap().data.node_type {
@@ -230,16 +317,21 @@ impl Block {
                                 ast,
                                 ast.get_child_node(*child, 1).unwrap().id,
                             );
-                            rhs.shift_time(-offset);
                             if assignments.contains_key(&lhs.variable) {
                                 panic!("Can't assign variable multiple times!");
                             }
-                            assignments.insert(lhs.variable, rhs);
+                            assignments.insert(lhs.variable, (offset, rhs));
                         }
                     }
                 }
                 ASTNodeType::Conditional => {
-                    unimplemented!();
+                    let mut new_assignments = Self::from_conditional_children(
+                        ast,
+                        ast.get_node(*child).unwrap().children.as_ref().unwrap(),
+                    );
+                    for (k, v) in new_assignments.drain() {
+                        assignments.insert(k, v);
+                    }
                 }
                 ASTNodeType::VariableDeclaration { .. } => {
                     if !declaration_allowed {
@@ -248,11 +340,120 @@ impl Block {
                     // Otherwise, we purposefully ignore this
                 }
                 _ => {
-                    panic!("Unexpected node");
+                    panic!(
+                        "Unexpected node {:?}",
+                        ast.get_node(*child).unwrap().data.node_type
+                    );
                 }
             }
         }
-        Self { assignments }
+        assignments
+    }
+
+    /// Constructs a block from the children of a conditional node
+    /// Note that this function is recursive: It gets called for each else-if
+    /// in the chain, and for the else itself.
+    fn from_conditional_children(
+        ast: &Tree<ASTNode>,
+        children: &[NodeId],
+    ) -> HashMap<String, (i64, Box<Expression>)> {
+        match &ast.get_node(children[0]).unwrap().data.node_type {
+            ASTNodeType::Block => {
+                // This is an unconditional else
+                Block::from_ast_with_offsets(
+                    ast,
+                    &ast.get_node(children[0])
+                        .unwrap()
+                        .children
+                        .as_ref()
+                        .unwrap(),
+                    false,
+                )
+            }
+            _ => {
+                // This is the condition for the next branch
+                let condition = Expression::from_ast(ast, children[0]);
+                let mut iftrue = Block::from_ast_with_offsets(
+                    ast,
+                    &ast.get_node(children[1])
+                        .unwrap()
+                        .children
+                        .as_ref()
+                        .unwrap(),
+                    false,
+                );
+                let mut iffalse = Block::from_conditional_children(ast, &children[2..]);
+
+                //let mut assignments = iftrue.assignments;
+                let mut assignments = HashMap::new();
+                for (variable, value) in iffalse.drain() {
+                    if iftrue.contains_key(&variable) {
+                        // Build a ternary
+
+                        let (true_offset, iftrue) = iftrue.remove(&variable).unwrap();
+                        let (false_offset, iffalse) = value;
+
+                        if true_offset != false_offset {
+                            panic!("A given variable must be assigned at the same time step across conditional branches");
+                        }
+
+                        assignments.insert(
+                            variable,
+                            (
+                                true_offset,
+                                Box::new(Expression::Ternary {
+                                    condition: condition.clone(),
+                                    lhs: iftrue,
+                                    rhs: iffalse,
+                                }),
+                            ),
+                        );
+                    } else {
+                        // Build a ternary where the if-true is the previous value
+                        let (false_offset, iffalse) = value;
+                        let iftrue = Box::new(Expression::VariableReference(VariableReference {
+                            variable: variable.clone(),
+                            time: TimeReference::Relative(false_offset - 1),
+                        }));
+
+                        assignments.insert(
+                            variable,
+                            (
+                                false_offset,
+                                Box::new(Expression::Ternary {
+                                    condition: condition.clone(),
+                                    lhs: iftrue,
+                                    rhs: iffalse,
+                                }),
+                            ),
+                        );
+                    }
+                }
+
+                // Everything left in iftrue will not be set in the false branch
+                for (variable, value) in iftrue.drain() {
+                    let (true_offset, iftrue) = value;
+                    let iffalse = Box::new(Expression::VariableReference(VariableReference {
+                        variable: variable.clone(),
+                        time: TimeReference::Relative(true_offset - 1),
+                    }));
+
+                    assignments.insert(
+                        variable,
+                        (
+                            true_offset,
+                            Box::new(Expression::Ternary {
+                                condition: condition.clone(),
+                                lhs: iftrue,
+                                rhs: iffalse,
+                            }),
+                        ),
+                    );
+                }
+
+                assignments
+            }
+        }
     }
 
     pub fn variable_reference_range(&self, varname: &str) -> std::ops::Range<i64> {

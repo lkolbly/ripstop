@@ -362,6 +362,19 @@ fn compile_ir_expression(expr: &Expression) -> Result<Tree<VNode>, CompileError>
             let mut lhs = compile_ir_expression(operatee)?;
             vast.append_tree(node, &mut lhs)?;
         }
+        Expression::Ternary {
+            condition,
+            lhs,
+            rhs,
+        } => {
+            let mut condition = compile_ir_expression(condition)?;
+            let node = vast.new_node(VNode::Ternary {});
+            let mut lhs = compile_ir_expression(lhs)?;
+            let mut rhs = compile_ir_expression(rhs)?;
+            vast.append_tree(node, &mut condition);
+            vast.append_tree(node, &mut lhs);
+            vast.append_tree(node, &mut rhs);
+        }
         Expression::VariableReference(reference) => {
             // Get t-offset
             let t_offset = if let crate::ir::TimeReference::Relative(offset) = reference.time {
