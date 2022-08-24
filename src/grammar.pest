@@ -39,9 +39,19 @@ bitwise_inverse = { "~" }
 
 binary_operand = _{ parenthetical_expression | index_expression | indexed_variable | unary_operation | number_literal }
 binary_operation = { binary_operand ~ (binary_operator ~ binary_operand)+ }
-binary_operator = _{ addition | subtraction }
+binary_operator = _{ concatenate | addition | subtraction | bitwise_and | bitwise_or | bitwise_xor | equal | notequal | greater_eq | less_eq | greater | less }
 addition = { "+" }
 subtraction = { "-" }
+bitwise_and = { "&" }
+bitwise_xor = { "^" }
+bitwise_or = { "|" }
+equal = { "==" }
+notequal = { "!=" }
+greater = { ">" }
+less = { "<" }
+greater_eq = { ">=" }
+less_eq = { "<=" }
+concatenate = { "++" }
 
 signed_integer = { (( addition | subtraction ) ~ pos_integer) | pos_integer }
 

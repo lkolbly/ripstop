@@ -20,7 +20,18 @@ struct RipstopParser;
 
 lazy_static! {
     static ref PREC_CLIMBER: PrecClimber<Rule> = PrecClimber::new(vec![
-        Operator::new(Rule::addition, Assoc::Left) | Operator::new(Rule::subtraction, Assoc::Left)
+        Operator::new(Rule::addition, Assoc::Left)
+            | Operator::new(Rule::subtraction, Assoc::Left)
+            | Operator::new(Rule::bitwise_and, Assoc::Left)
+            | Operator::new(Rule::bitwise_xor, Assoc::Left)
+            | Operator::new(Rule::bitwise_or, Assoc::Left)
+            | Operator::new(Rule::equal, Assoc::Left)
+            | Operator::new(Rule::notequal, Assoc::Left)
+            | Operator::new(Rule::greater, Assoc::Left)
+            | Operator::new(Rule::less, Assoc::Left)
+            | Operator::new(Rule::greater_eq, Assoc::Left)
+            | Operator::new(Rule::less_eq, Assoc::Left)
+            | Operator::new(Rule::concatenate, Assoc::Left)
     ]);
 }
 
@@ -155,6 +166,16 @@ pub fn parse(toparse: &str) -> Tree<ASTNode> {
                     let n_type = match op.as_rule() {
                         Rule::addition => ASTNodeType::Add,
                         Rule::subtraction => ASTNodeType::Subtract,
+                        Rule::bitwise_and => ASTNodeType::BitwiseAnd,
+                        Rule::bitwise_xor => ASTNodeType::BitwiseXor,
+                        Rule::bitwise_or => ASTNodeType::BitwiseOr,
+                        Rule::equal => ASTNodeType::Equal,
+                        Rule::notequal => ASTNodeType::NotEqual,
+                        Rule::greater => ASTNodeType::Greater,
+                        Rule::less => ASTNodeType::Less,
+                        Rule::greater_eq => ASTNodeType::GreaterEq,
+                        Rule::less_eq => ASTNodeType::LessEq,
+                        Rule::concatenate => ASTNodeType::Concatenate,
                         _ => unreachable!(),
                     };
                     let data = ASTNode::new(n_type, op);

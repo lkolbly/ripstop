@@ -5,6 +5,8 @@
 /// The IR is time-aware.
 use std::collections::HashMap;
 
+use pest::prec_climber::Operator;
+
 use crate::ast::{ASTNode, ASTNodeType, Type};
 use crate::compile::CompileError;
 use crate::parse::{NumberLiteral, Range};
@@ -37,6 +39,37 @@ pub enum UnaryOperator {
 #[derive(Debug, Clone)]
 pub enum BinaryOperator {
     Addition,
+    Subtraction,
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
+    Equal,
+    NotEqual,
+    Greater,
+    Less,
+    GreaterEq,
+    LessEq,
+    Concatenate,
+}
+
+impl BinaryOperator {
+    fn from_ast(n: ASTNodeType) -> Option<Self> {
+        match n {
+            ASTNodeType::Add => Some(Self::Addition),
+            ASTNodeType::Subtract => Some(Self::Subtraction),
+            ASTNodeType::BitwiseAnd => Some(Self::BitwiseAnd),
+            ASTNodeType::BitwiseOr => Some(Self::BitwiseOr),
+            ASTNodeType::BitwiseXor => Some(Self::BitwiseXor),
+            ASTNodeType::Equal => Some(Self::Equal),
+            ASTNodeType::NotEqual => Some(Self::NotEqual),
+            ASTNodeType::Greater => Some(Self::Greater),
+            ASTNodeType::Less => Some(Self::Less),
+            ASTNodeType::GreaterEq => Some(Self::GreaterEq),
+            ASTNodeType::LessEq => Some(Self::LessEq),
+            ASTNodeType::Concatenate => Some(Self::Concatenate),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -86,11 +119,6 @@ pub enum Expression {
 impl Expression {
     fn from_ast(ast: &Tree<ASTNode>, node: NodeId) -> Box<Self> {
         let node = match &ast.get_node(node).unwrap().data.node_type {
-            ASTNodeType::Add => Self::BinaryOperation {
-                operation: BinaryOperator::Addition,
-                lhs: Self::from_ast(ast, ast.get_child_node(node, 0).unwrap().id),
-                rhs: Self::from_ast(ast, ast.get_child_node(node, 1).unwrap().id),
-            },
             ASTNodeType::BitwiseInverse => Self::UnaryOperation {
                 operation: UnaryOperator::Negation,
                 operatee: Self::from_ast(ast, ast.get_first_child(node).unwrap().id),
@@ -106,8 +134,16 @@ impl Expression {
                 }),
                 operatee: Self::from_ast(ast, ast.get_first_child(node).unwrap().id),
             },
-            _ => {
-                todo!();
+            nodetype => {
+                if let Some(operator) = BinaryOperator::from_ast(nodetype.clone()) {
+                    Self::BinaryOperation {
+                        operation: operator,
+                        lhs: Self::from_ast(ast, ast.get_child_node(node, 0).unwrap().id),
+                        rhs: Self::from_ast(ast, ast.get_child_node(node, 1).unwrap().id),
+                    }
+                } else {
+                    todo!();
+                }
             }
         };
         Box::new(node)

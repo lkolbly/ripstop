@@ -1,0 +1,14 @@
+### CODE
+
+module comb_and(bits<4> a, bits<4> b) -> (bits<4> c) {
+    c[t] = a[t] & b[t];
+}
+
+### DATA
+rst,a in 4,b in 4,c out 4
+1,0,0,x
+1,0,0,x
+0,1,2,0
+0,15,0,0
+0,15,5,5
+0,4,5,4

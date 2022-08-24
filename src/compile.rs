@@ -104,7 +104,11 @@ fn get_node_type(
         ASTNodeType::BitwiseInverse => Ok(child_vals[0]),
         //Binary operators require valid types, and theoretically this could allow for different types on each side
         //For example, if matrix multiplication was added, then as long as `lhs` was a matrix, `rhs` could be matrix or scalar
-        ASTNodeType::Add | ASTNodeType::Subtract => {
+        ASTNodeType::Add
+        | ASTNodeType::Subtract
+        | ASTNodeType::BitwiseAnd
+        | ASTNodeType::BitwiseOr
+        | ASTNodeType::BitwiseXor => {
             //The error which will be returned if a type mismatch occurs
             let err = Err(CompileError::MismatchedTypes {
                 context: tree[this_node.children.clone().unwrap()[0]]
@@ -127,6 +131,36 @@ fn get_node_type(
                 _ => err,
             }
         }
+        ASTNodeType::Equal
+        | ASTNodeType::NotEqual
+        | ASTNodeType::Greater
+        | ASTNodeType::Less
+        | ASTNodeType::GreaterEq
+        | ASTNodeType::LessEq => {
+            //The error which will be returned if a type mismatch occurs
+            let err = Err(CompileError::MismatchedTypes {
+                context: tree[this_node.children.clone().unwrap()[0]]
+                    .data
+                    .context
+                    .clone(),
+                current_type: child_vals[1],
+                needed_type: child_vals[0],
+            });
+
+            match (child_vals[0], child_vals[1]) {
+                (Type::Bit, Type::Bit) => Ok(Type::Bit),
+                (Type::Bits { size: lhs_size }, Type::Bits { size: rhs_size }) => {
+                    if lhs_size == rhs_size {
+                        Ok(Type::Bit)
+                    } else {
+                        err
+                    }
+                }
+                _ => err,
+            }
+        }
+        ASTNodeType::Concatenate => Ok(Type::Bits { size: child_vals[0].bit_size() + child_vals[1].bit_size() }),
+
         //Time offsets need to be allowed but do *not* pass any type, they are typeless
         //Since this can't be represented, just return a type of bits<0>
         ASTNodeType::TimeOffsetRelative { offset: _ }
@@ -342,6 +376,17 @@ fn compile_ir_expression(expr: &Expression) -> Result<Tree<VNode>, CompileError>
         } => {
             let node = vast.new_node(match operation {
                 BinaryOperator::Addition => VNode::Add {},
+                BinaryOperator::Subtraction => VNode::Subtract {},
+                BinaryOperator::BitwiseAnd => VNode::BitwiseAnd {},
+                BinaryOperator::BitwiseOr => VNode::BitwiseOr {},
+                BinaryOperator::BitwiseXor => VNode::BitwiseXor {},
+                BinaryOperator::Equal => VNode::Equal {},
+                BinaryOperator::NotEqual => VNode::NotEqual {},
+                BinaryOperator::Greater => VNode::Greater {},
+                BinaryOperator::GreaterEq => VNode::GreaterEq {},
+                BinaryOperator::Less => VNode::Less {},
+                BinaryOperator::LessEq => VNode::LessEq {},
+                BinaryOperator::Concatenate => VNode::Concatenate {},
             });
             let mut lhs = compile_ir_expression(lhs)?;
             let mut rhs = compile_ir_expression(rhs)?;

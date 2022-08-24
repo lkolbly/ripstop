@@ -62,6 +62,17 @@ pub enum VNode {
     /// Copied from ast::Node
     Subtract {},
 
+    BitwiseAnd {},
+    BitwiseOr {},
+    BitwiseXor {},
+    Equal {},
+    NotEqual {},
+    Greater {},
+    GreaterEq {},
+    Less {},
+    LessEq {},
+    Concatenate {},
+
     /// An index into a single value or range of an array. This is the parent of what it indexes
     ///
     /// `[high:low]`
@@ -182,7 +193,7 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
         VNode::Add {} => {
             let children = children.unwrap();
             format!(
-                "{whitespace}{} + {}",
+                "{whitespace}({}) + ({})",
                 verilog_ast_to_string(children[0], tree, 0),
                 verilog_ast_to_string(children[1], tree, 0)
             )
@@ -190,7 +201,87 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
         VNode::Subtract {} => {
             let children = children.unwrap();
             format!(
-                "{whitespace}{} - {}",
+                "{whitespace}({}) - ({})",
+                verilog_ast_to_string(children[0], tree, 0),
+                verilog_ast_to_string(children[1], tree, 0)
+            )
+        }
+        VNode::BitwiseAnd {} => {
+            let children = children.unwrap();
+            format!(
+                "{whitespace}({}) & ({})",
+                verilog_ast_to_string(children[0], tree, 0),
+                verilog_ast_to_string(children[1], tree, 0)
+            )
+        }
+        VNode::BitwiseOr {} => {
+            let children = children.unwrap();
+            format!(
+                "{whitespace}({}) | ({})",
+                verilog_ast_to_string(children[0], tree, 0),
+                verilog_ast_to_string(children[1], tree, 0)
+            )
+        }
+        VNode::BitwiseXor {} => {
+            let children = children.unwrap();
+            format!(
+                "{whitespace}({}) ^ ({})",
+                verilog_ast_to_string(children[0], tree, 0),
+                verilog_ast_to_string(children[1], tree, 0)
+            )
+        }
+        VNode::Equal {} => {
+            let children = children.unwrap();
+            format!(
+                "{whitespace}({}) == ({})",
+                verilog_ast_to_string(children[0], tree, 0),
+                verilog_ast_to_string(children[1], tree, 0)
+            )
+        }
+        VNode::NotEqual {} => {
+            let children = children.unwrap();
+            format!(
+                "{whitespace}({}) != ({})",
+                verilog_ast_to_string(children[0], tree, 0),
+                verilog_ast_to_string(children[1], tree, 0)
+            )
+        }
+        VNode::Greater {} => {
+            let children = children.unwrap();
+            format!(
+                "{whitespace}({}) > ({})",
+                verilog_ast_to_string(children[0], tree, 0),
+                verilog_ast_to_string(children[1], tree, 0)
+            )
+        }
+        VNode::GreaterEq {  } => {
+            let children = children.unwrap();
+            format!(
+                "{whitespace}({}) >= ({})",
+                verilog_ast_to_string(children[0], tree, 0),
+                verilog_ast_to_string(children[1], tree, 0)
+            )
+        }
+        VNode::Less {} => {
+            let children = children.unwrap();
+            format!(
+                "{whitespace}({}) < ({})",
+                verilog_ast_to_string(children[0], tree, 0),
+                verilog_ast_to_string(children[1], tree, 0)
+            )
+        }
+        VNode::LessEq {} => {
+            let children = children.unwrap();
+            format!(
+                "{whitespace}({}) <= ({})",
+                verilog_ast_to_string(children[0], tree, 0),
+                verilog_ast_to_string(children[1], tree, 0)
+            )
+        }
+        VNode::Concatenate {} => {
+            let children = children.unwrap();
+            format!(
+                "{whitespace}{{({}), ({})}}",
                 verilog_ast_to_string(children[0], tree, 0),
                 verilog_ast_to_string(children[1], tree, 0)
             )

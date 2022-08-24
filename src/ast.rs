@@ -143,6 +143,17 @@ pub enum ASTNodeType {
     BitwiseInverse,
     Add,
     Subtract,
+    BitwiseAnd,
+    BitwiseXor,
+    BitwiseOr,
+    Equal,
+    NotEqual,
+    Greater,
+    Less,
+    GreaterEq,
+    LessEq,
+    Concatenate,
+
     Assign,
     VariableDeclaration {
         var_type: Type,

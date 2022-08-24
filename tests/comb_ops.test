@@ -1,0 +1,37 @@
+### CODE
+
+module comb_ops(bits<4> a, bits<4> b)
+-> (
+    bits<4> add_out,
+    bits<4> sub_out,
+    bits<4> and_out,
+    bits<4> or_out,
+    bits<4> xor_out,
+    bit eq_out,
+    bit neq_out,
+    bit gt_out,
+    bit lt_out,
+    bit ge_out,
+    bit le_out,
+    bits<8> concat_out
+) {
+    add_out[t] = a[t] + b[t];
+    sub_out[t] = a[t] - b[t];
+    and_out[t] = a[t] & b[t];
+    or_out[t] = a[t] | b[t];
+    xor_out[t] = a[t] ^ b[t];
+    eq_out[t] = a[t] == b[t];
+    neq_out[t] = a[t] != b[t];
+    gt_out[t] = a[t] > b[t];
+    lt_out[t] = a[t] < b[t];
+    ge_out[t] = a[t] >= b[t];
+    le_out[t] = a[t] <= b[t];
+    concat_out[t] = a[t] ++ b[t];
+}
+
+### DATA
+rst,a in 4,b in 4,add_out out 4,sub_out out 4,and_out out 4,or_out out 4,xor_out out 4,eq_out out 1,neq_out out 1,gt_out out 1,lt_out out 1,ge_out out 1,le_out out 1,concat_out out 8
+0,0,0,0,0,0,0,0,1,0,0,0,1,1,0
+0,4,5,9,15,4,5,1,0,1,0,1,0,1,69
+0,15,15,14,0,15,15,0,1,0,0,0,1,1,255
+0,9,3,12,6,1,11,10,0,1,1,0,1,0,147
