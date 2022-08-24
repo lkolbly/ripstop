@@ -616,13 +616,14 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
     //Register chain creation for each variable
     for (name, vartype) in module.variables.clone().iter() {
         //Create the possible index for this node for use with `compile_var_ref_from_string`
-        let index = match vartype {
+        let index = None;
+        /*let index = match vartype {
             Type::Bits { size } => Some(VNode::Index {
                 high: size - 1,
                 low: 0,
             }),
             _ => None,
-        };
+        };*/
 
         // Assign indexed variables to their input/output counterparts
         if is_input(name) || is_output(name) {

@@ -193,7 +193,7 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
         VNode::Add {} => {
             let children = children.unwrap();
             format!(
-                "{whitespace}({}) + ({})",
+                "{whitespace}(({}) + ({}))",
                 verilog_ast_to_string(children[0], tree, 0),
                 verilog_ast_to_string(children[1], tree, 0)
             )
@@ -201,7 +201,7 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
         VNode::Subtract {} => {
             let children = children.unwrap();
             format!(
-                "{whitespace}({}) - ({})",
+                "{whitespace}(({}) - ({}))",
                 verilog_ast_to_string(children[0], tree, 0),
                 verilog_ast_to_string(children[1], tree, 0)
             )
@@ -209,7 +209,7 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
         VNode::BitwiseAnd {} => {
             let children = children.unwrap();
             format!(
-                "{whitespace}({}) & ({})",
+                "{whitespace}(({}) & ({}))",
                 verilog_ast_to_string(children[0], tree, 0),
                 verilog_ast_to_string(children[1], tree, 0)
             )
@@ -217,7 +217,7 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
         VNode::BitwiseOr {} => {
             let children = children.unwrap();
             format!(
-                "{whitespace}({}) | ({})",
+                "{whitespace}(({}) | ({}))",
                 verilog_ast_to_string(children[0], tree, 0),
                 verilog_ast_to_string(children[1], tree, 0)
             )
@@ -225,7 +225,7 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
         VNode::BitwiseXor {} => {
             let children = children.unwrap();
             format!(
-                "{whitespace}({}) ^ ({})",
+                "{whitespace}(({}) ^ ({}))",
                 verilog_ast_to_string(children[0], tree, 0),
                 verilog_ast_to_string(children[1], tree, 0)
             )
@@ -233,7 +233,7 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
         VNode::Equal {} => {
             let children = children.unwrap();
             format!(
-                "{whitespace}({}) == ({})",
+                "{whitespace}(({}) == ({}))",
                 verilog_ast_to_string(children[0], tree, 0),
                 verilog_ast_to_string(children[1], tree, 0)
             )
@@ -241,7 +241,7 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
         VNode::NotEqual {} => {
             let children = children.unwrap();
             format!(
-                "{whitespace}({}) != ({})",
+                "{whitespace}(({}) != ({}))",
                 verilog_ast_to_string(children[0], tree, 0),
                 verilog_ast_to_string(children[1], tree, 0)
             )
@@ -249,7 +249,7 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
         VNode::Greater {} => {
             let children = children.unwrap();
             format!(
-                "{whitespace}({}) > ({})",
+                "{whitespace}(({}) > ({}))",
                 verilog_ast_to_string(children[0], tree, 0),
                 verilog_ast_to_string(children[1], tree, 0)
             )
@@ -257,7 +257,7 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
         VNode::GreaterEq {  } => {
             let children = children.unwrap();
             format!(
-                "{whitespace}({}) >= ({})",
+                "{whitespace}(({}) >= ({}))",
                 verilog_ast_to_string(children[0], tree, 0),
                 verilog_ast_to_string(children[1], tree, 0)
             )
@@ -265,7 +265,7 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
         VNode::Less {} => {
             let children = children.unwrap();
             format!(
-                "{whitespace}({}) < ({})",
+                "{whitespace}(({}) < ({}))",
                 verilog_ast_to_string(children[0], tree, 0),
                 verilog_ast_to_string(children[1], tree, 0)
             )
@@ -273,7 +273,7 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
         VNode::LessEq {} => {
             let children = children.unwrap();
             format!(
-                "{whitespace}({}) <= ({})",
+                "{whitespace}(({}) <= ({}))",
                 verilog_ast_to_string(children[0], tree, 0),
                 verilog_ast_to_string(children[1], tree, 0)
             )
@@ -288,8 +288,10 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
         }
         VNode::Index { high, low } => {
             let children = children.unwrap();
+            let width = high - low + 1;
+            let mask: u32 = (1 << width) - 1;
             format!(
-                "{whitespace}{}[{high}:{low}]",
+                "{whitespace}((({}) >> {low}) & {width}'d{mask})",
                 verilog_ast_to_string(children[0], tree, 0),
             )
         }

@@ -1,0 +1,13 @@
+### CODE
+
+module index_expression(bits<4> a, bits<4> b) -> (bits<2> c) {
+    c[t] = (a[t] + b[t])[1:0];
+}
+
+### DATA
+rst,a in 4,b in 4,c out 4
+1,0,0,x
+1,0,0,x
+0,1,2,3
+0,15,0,3
+0,0,0,0
