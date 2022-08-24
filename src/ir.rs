@@ -392,6 +392,10 @@ impl Block {
         ast: &Tree<ASTNode>,
         children: &[NodeId],
     ) -> HashMap<String, (i64, Box<Expression>)> {
+        if children.len() == 0 {
+            // This must be after a else-if case, but with no following else.
+            return HashMap::new();
+        }
         match &ast.get_node(children[0]).unwrap().data.node_type {
             ASTNodeType::Block => {
                 // This is an unconditional else
