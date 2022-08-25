@@ -1,4 +1,4 @@
-use crate::{compile::CompileError, parse::Rule};
+use crate::{error::CompileError, parse::Rule};
 use pest::iterators::Pair;
 use std::fmt::Display;
 

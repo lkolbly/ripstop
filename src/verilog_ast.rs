@@ -254,7 +254,7 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
                 verilog_ast_to_string(children[1], tree, 0)
             )
         }
-        VNode::GreaterEq {  } => {
+        VNode::GreaterEq {} => {
             let children = children.unwrap();
             format!(
                 "{whitespace}(({}) >= ({}))",

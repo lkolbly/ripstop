@@ -3,7 +3,9 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
     ast::{ASTNode, ASTNodeType},
+    error::{CompileError, CompileResult},
     ir::{BinaryOperator, Expression, Module, UnaryOperator},
+    logerror, singleerror,
     tree::{NodeId, Tree, TreeError},
     verilog_ast::{AlwaysBeginTriggerType, VNode},
 };
@@ -159,7 +161,9 @@ fn get_node_type(
                 _ => err,
             }
         }
-        ASTNodeType::Concatenate => Ok(Type::Bits { size: child_vals[0].bit_size() + child_vals[1].bit_size() }),
+        ASTNodeType::Concatenate => Ok(Type::Bits {
+            size: child_vals[0].bit_size() + child_vals[1].bit_size(),
+        }),
 
         //Time offsets need to be allowed but do *not* pass any type, they are typeless
         //Since this can't be represented, just return a type of bits<0>
@@ -479,101 +483,27 @@ fn compile_var_ref_from_string(
     Ok(tree)
 }
 
-#[derive(Clone)]
-pub enum CompileError {
-    CouldNotFindASTHead,
-    TreeError {
-        err: TreeError,
-    },
-    UndeclaredVariable {
-        context: StringContext,
-    },
-    ReferenceAfterAssignment {
-        context: StringContext,
-    },
-    AssignmentInPast {
-        context: StringContext,
-    },
-    InputAssignment {
-        context: StringContext,
-    },
-    /// When a variable/literal/etc has one type but should have another type in order to compile
-    MismatchedTypes {
-        context: StringContext,
-        current_type: Type,
-        needed_type: Type,
-    },
-    IndexOutOfBounds {
-        context: StringContext,
-    },
-    CannotIndexType {
-        context: StringContext,
-        invalid_type: Type,
-    },
-    /// When a set of nodes have types which do not make sense in relation to eachother.
-    /// For example, this error will be raised when adding a `ModuleDeclaration` to a `VariableReference` and it will contain data for those two nodes
-    InvalidNodeTypes {
-        nodes: Vec<ASTNode>,
-    },
-}
-
-impl From<TreeError> for CompileError {
-    fn from(e: TreeError) -> Self {
-        CompileError::TreeError { err: e }
-    }
-}
-
-impl std::fmt::Debug for CompileError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let mut include_position =
-            |ctx: &StringContext, msg: &str| write!(f, "{} on {}", msg, ctx,);
-        match self {
-            CompileError::CouldNotFindASTHead => write!(f, "Could not find AST head."),
-            CompileError::TreeError { err } => write!(f, "Tree error: {:?}", err),
-            CompileError::UndeclaredVariable { context } => {
-                include_position(context, "Undeclared variable")
-            }
-            CompileError::ReferenceAfterAssignment { context } => {
-                include_position(context, "Reference too late (you cannot reference a variable at a time offset greater than when it's assigned)")
-            }
-            CompileError::AssignmentInPast { context } => {
-                include_position(context, "Assignment in past (you cannot assign a variable in the past)")
-            }
-            CompileError::InputAssignment { context } => {
-                include_position(context, "Assigning to an input value")
-            }
-            CompileError::MismatchedTypes { context, current_type, needed_type } => {
-                include_position(context, &format!("Mismatched types: provided `{}` but should have been `{}`", current_type, needed_type))
-            },
-            CompileError::InvalidNodeTypes { nodes } => {
-                let mut nodes_string = String::new();
-                for n in nodes {
-                    nodes_string += &format!("{}\n", n.context);
-                }
-                write!(f, "The following nodes have invalid types given their relationship:\n{}", nodes_string)
-            },
-            CompileError::IndexOutOfBounds { context } => include_position(context, "Index out of bounds"),
-            CompileError::CannotIndexType { context, invalid_type } => include_position(context, &format!("Cannot index type {}", invalid_type)),
-        }
-    }
-}
-
 ///Compiles a single module into Verilog from an AST
-pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileError> {
+pub fn compile_module(tree: &mut Tree<ASTNode>) -> CompileResult<Tree<VNode>> {
+    let mut result = CompileResult::new();
+
     //A little bit of a workaround in order to make this work well with the ? operator
-    let head = tree.find_head().ok_or(CompileError::CouldNotFindASTHead)?;
+    let head = singleerror!(
+        result,
+        tree.find_head().ok_or(CompileError::CouldNotFindASTHead)
+    );
 
     // Type-check to make sure everything'll work
     {
         //Stores pairs of (variable ID, (highest used t-offset, lowest used t-offset))
         //This is needed to create the registers
-        let variables: HashMap<String, VarBounds> = get_var_bounds(tree)?;
+        let variables: HashMap<String, VarBounds> = singleerror!(result, get_var_bounds(tree));
 
         //Before creating the tree, verify it
-        verify(tree, &variables)?;
+        singleerror!(result, verify(tree, &variables));
     }
 
-    let module = Module::from_ast(tree, head)?;
+    let module = logerror!(result, Module::from_ast(tree, head));
 
     //Creating the Verilog AST can now officially begin
 
@@ -629,8 +559,14 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
         if is_input(name) || is_output(name) {
             let (mut assign_no_index_tree, mut assign_index_0_tree) = {
                 (
-                    compile_var_ref_from_string(name, None, index.clone())?,
-                    compile_var_ref_from_string(name, Some(0), index.clone())?,
+                    singleerror!(
+                        result,
+                        compile_var_ref_from_string(name, None, index.clone())
+                    ),
+                    singleerror!(
+                        result,
+                        compile_var_ref_from_string(name, Some(0), index.clone())
+                    ),
                 )
             };
             let assign_node = v_tree.new_node(VNode::AssignKeyword {});
@@ -638,18 +574,28 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
             if is_output(name) {
                 // Assign index 0 to actual variable (only necessary if variable is an output):
                 // assign out = out_0;
-                v_tree.append_tree(assign_node, &mut assign_no_index_tree)?;
+                singleerror!(
+                    result,
+                    v_tree.append_tree(assign_node, &mut assign_no_index_tree)
+                );
 
                 // If the rhs has variables referenced at [t], then this is a combinatorial assign
                 // Otherwise, it is registered (and we assign the t-1 register to the output)
-                let is_combinatorial_output = module
-                    .block
-                    .assignments
-                    .get(name)
-                    .unwrap()
-                    .is_combinatorial();
+                let expr = match module.block.assignments.get(name) {
+                    Some(e) => e,
+                    None => {
+                        result.error(CompileError::VariableNotAssigned {
+                            var_name: name.clone(),
+                        });
+                        continue;
+                    }
+                };
+                let is_combinatorial_output = expr.is_combinatorial();
 
-                v_tree.append_tree(assign_node, &mut assign_index_0_tree)?;
+                singleerror!(
+                    result,
+                    v_tree.append_tree(assign_node, &mut assign_index_0_tree)
+                );
 
                 // Go back and declare the variable
                 if is_combinatorial_output {
@@ -661,15 +607,21 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
                         bits: module.variables[name].bit_size(),
                     };
                     let declaration = v_tree.new_node(declaration);
-                    v_tree.append_to(v_head, declaration)?;
+                    singleerror!(result, v_tree.append_to(v_head, declaration));
 
-                    v_tree.append_to(declaration, reg_head)?;
+                    singleerror!(result, v_tree.append_to(declaration, reg_head));
                 }
             } else {
                 // The opposite is necessary for inputs:
                 // assign in_0 = in;
-                v_tree.append_tree(assign_node, &mut assign_index_0_tree)?;
-                v_tree.append_tree(assign_node, &mut assign_no_index_tree)?;
+                singleerror!(
+                    result,
+                    v_tree.append_tree(assign_node, &mut assign_index_0_tree)
+                );
+                singleerror!(
+                    result,
+                    v_tree.append_tree(assign_node, &mut assign_no_index_tree)
+                );
                 /*v_tree.append_to(assign_node, assign_index_0)?;
                 v_tree.append_to(assign_node, assign_no_index)?;*/
 
@@ -682,12 +634,12 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
                     bits: module.variables[name].bit_size(),
                 };
                 let declaration = v_tree.new_node(declaration);
-                v_tree.append_to(v_head, declaration)?;
+                singleerror!(result, v_tree.append_to(v_head, declaration));
 
-                v_tree.append_to(declaration, reg_head)?;
+                singleerror!(result, v_tree.append_to(declaration, reg_head));
             }
 
-            v_tree.append_to(head, assign_node)?;
+            singleerror!(result, v_tree.append_to(head, assign_node));
         }
 
         // TODO: Calculate the ref_range based on what variables we actually use
@@ -701,7 +653,10 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
         // var_1 <= var_2;
         // etc.
         for i in ref_range {
-            let mut lhs = compile_var_ref_from_string(name, Some(i), index.clone())?;
+            let mut lhs = singleerror!(
+                result,
+                compile_var_ref_from_string(name, Some(i), index.clone())
+            );
 
             let reset_value = module.reset_values.get(name);
 
@@ -714,20 +669,26 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
                 let reset_value = conditional_tree.new_node(VNode::NumberLiteral {
                     literal: *reset_value,
                 });
-                conditional_tree.append_to(conditional, rst_ref)?;
-                conditional_tree.append_to(conditional, reset_value)?;
-                let mut rhs = compile_var_ref_from_string(name, Some(i + 1), index.clone())?;
-                conditional_tree.append_tree(conditional, &mut rhs)?;
+                singleerror!(result, conditional_tree.append_to(conditional, rst_ref));
+                singleerror!(result, conditional_tree.append_to(conditional, reset_value));
+                let mut rhs = singleerror!(
+                    result,
+                    compile_var_ref_from_string(name, Some(i + 1), index.clone())
+                );
+                singleerror!(result, conditional_tree.append_tree(conditional, &mut rhs));
                 conditional_tree
             } else {
-                compile_var_ref_from_string(name, Some(i + 1), index.clone())?
+                singleerror!(
+                    result,
+                    compile_var_ref_from_string(name, Some(i + 1), index.clone())
+                )
             };
 
             let reg_assign = v_tree.new_node(VNode::ClockAssign {});
 
-            v_tree.append_tree(reg_assign, &mut lhs)?;
-            v_tree.append_tree(reg_assign, &mut rhs)?;
-            v_tree.append_to(clock_edge, reg_assign)?;
+            singleerror!(result, v_tree.append_tree(reg_assign, &mut lhs));
+            singleerror!(result, v_tree.append_tree(reg_assign, &mut rhs));
+            singleerror!(result, v_tree.append_to(clock_edge, reg_assign));
 
             // Go back and declare the variable
             let var_node = VNode::VariableReference {
@@ -738,9 +699,9 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
                 bits: module.variables[name].bit_size(),
             };
             let declaration = v_tree.new_node(declaration);
-            v_tree.append_to(v_head, declaration)?;
+            singleerror!(result, v_tree.append_to(v_head, declaration));
 
-            v_tree.append_to(declaration, reg_head)?;
+            singleerror!(result, v_tree.append_to(declaration, reg_head));
         }
     }
 
@@ -760,12 +721,12 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
             bits: module.variables[var_id].bit_size(),
         };
         let declaration = v_tree.new_node(declaration);
-        v_tree.append_to(v_head, declaration)?;
+        singleerror!(result, v_tree.append_to(v_head, declaration));
 
-        v_tree.append_to(declaration, reg_head)?;
+        singleerror!(result, v_tree.append_to(declaration, reg_head));
 
         // x_0 <= x_next
-        let mut lhs = compile_var_ref_from_string(var_id, Some(0), None)?;
+        let mut lhs = singleerror!(result, compile_var_ref_from_string(var_id, Some(0), None));
 
         let reset_value = module.reset_values.get(var_id);
 
@@ -778,19 +739,19 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
             let reset_value = conditional_tree.new_node(VNode::NumberLiteral {
                 literal: *reset_value,
             });
-            conditional_tree.append_to(conditional, rst_ref)?;
-            conditional_tree.append_to(conditional, reset_value)?;
-            let mut rhs = compile_var_ref_from_string(var_id, Some(1), None)?;
-            conditional_tree.append_tree(conditional, &mut rhs)?;
+            singleerror!(result, conditional_tree.append_to(conditional, rst_ref));
+            singleerror!(result, conditional_tree.append_to(conditional, reset_value));
+            let mut rhs = singleerror!(result, compile_var_ref_from_string(var_id, Some(1), None));
+            singleerror!(result, conditional_tree.append_tree(conditional, &mut rhs));
             conditional_tree
         } else {
-            compile_var_ref_from_string(var_id, Some(1), None)?
+            singleerror!(result, compile_var_ref_from_string(var_id, Some(1), None))
         };
 
         let reg_assign = v_tree.new_node(VNode::ClockAssign {});
-        v_tree.append_tree(reg_assign, &mut lhs)?;
-        v_tree.append_tree(reg_assign, &mut rhs)?;
-        v_tree.append_to(clock_edge, reg_assign)?;
+        singleerror!(result, v_tree.append_tree(reg_assign, &mut lhs));
+        singleerror!(result, v_tree.append_tree(reg_assign, &mut rhs));
+        singleerror!(result, v_tree.append_to(clock_edge, reg_assign));
 
         // Go back and declare the variable
         let var_node = VNode::VariableReference {
@@ -801,9 +762,9 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
             bits: module.variables[var_id].bit_size(),
         };
         let declaration = v_tree.new_node(declaration);
-        v_tree.append_to(v_head, declaration)?;
+        singleerror!(result, v_tree.append_to(v_head, declaration));
 
-        v_tree.append_to(declaration, reg_head)?;
+        singleerror!(result, v_tree.append_to(declaration, reg_head));
     }
 
     // Compile the assignments
@@ -824,18 +785,18 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
         };
 
         let assign_vnode = v_tree.new_node(VNode::AssignKeyword {});
-        v_tree.append_to(head, assign_vnode)?;
+        singleerror!(result, v_tree.append_to(head, assign_vnode));
 
-        v_tree.append_to(assign_vnode, lhs_vnode)?;
+        singleerror!(result, v_tree.append_to(assign_vnode, lhs_vnode));
 
         if !rhs.is_combinatorial() {
             let mut rhs = rhs.clone();
             rhs.shift_time(1);
-            let mut rhs = compile_ir_expression(&rhs)?;
-            v_tree.append_tree(assign_vnode, &mut rhs)?;
+            let mut rhs = singleerror!(result, compile_ir_expression(&rhs));
+            singleerror!(result, v_tree.append_tree(assign_vnode, &mut rhs));
         } else {
-            let mut rhs = compile_ir_expression(rhs)?;
-            v_tree.append_tree(assign_vnode, &mut rhs)?;
+            let mut rhs = singleerror!(result, compile_ir_expression(rhs));
+            singleerror!(result, v_tree.append_tree(assign_vnode, &mut rhs));
         }
 
         if rhs.is_combinatorial() && !is_output(var_id) {
@@ -847,9 +808,9 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
                 bits: module.variables[var_id].bit_size(),
             };
             let declaration = v_tree.new_node(declaration);
-            v_tree.append_to(v_head, declaration)?;
+            singleerror!(result, v_tree.append_to(v_head, declaration));
 
-            v_tree.append_to(declaration, reg_head)?;
+            singleerror!(result, v_tree.append_to(declaration, reg_head));
         }
     }
 
@@ -989,10 +950,11 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> Result<Tree<VNode>, CompileEr
 
     // Add the @(posedge clk) block if it's non-empty
     if v_tree.get_node(clock_edge).unwrap().children.is_some() {
-        v_tree.append_to(v_head, clock_edge)?;
+        singleerror!(result, v_tree.append_to(v_head, clock_edge));
     }
 
-    Ok(v_tree)
+    result.ok(v_tree);
+    result
 }
 
 /// Generate a Verilog variable name for the variable `var_id` at the index given by the node at `offset_id` on `tree`.

@@ -7,6 +7,7 @@ use std::io::{Read, Write};
 
 mod ast;
 mod compile;
+mod error;
 mod ir;
 mod parse;
 mod tree;
@@ -46,13 +47,14 @@ fn compile(input: std::path::PathBuf, output: Option<std::path::PathBuf>) -> i32
     let mut a = parse(&input);
     println!("{}\n", a);
 
-    let v_a = match compile_module(&mut a) {
-        Ok(x) => x,
-        Err(e) => {
-            eprintln!("{:?}", e);
-            return -1;
+    let result = compile_module(&mut a);
+    if result.errors.len() > 0 {
+        for error in result.errors.iter() {
+            eprintln!("{:?}", error);
         }
-    };
+        return -1;
+    }
+    let v_a = result.result.unwrap();
 
     println!("Bare tree:\n\n{}\n\n", v_a);
 
@@ -88,40 +90,4 @@ fn main() {
             std::process::exit(compile(input, output));
         }
     }
-    return;
-
-    println!("{:?}", args);
-
-    let mut a = parse(
-        "module hello() -> (bit led) {
-            led[t] = ~led[t-2]; // Perform the bitwise NOT
-        }",
-    );
-    println!("{:#?}\n", a);
-
-    let v_a = compile_module(&mut a).unwrap();
-
-    println!("Bare tree:\n\n{:#?}\n\n", v_a);
-
-    /*println!(
-        "Verilog Compiled:\n\n{}",
-        verilog_ast_to_string(v_a.find_head().unwrap(), &v_a, 0)
-    );*/
-
-    //println!("{:#?}\n", a);
-
-    //verify_ast(&mut a).unwrap();
-
-    //println!("Post-verify:\n\n{}\n\n", compile_module(&a));
-    //println!("{:#?}\n", a);
-
-    /*let b = parse(
-        "module add(bit b, bit c) -> (bit a) {
-        a[t] = a[t-1] + b[t] + c[t-1];
-    }",
-    );
-    println!("{:#?}", b);
-
-    println!("{:#?}", b);
-    println!("{}", compile_module(&b));*/
 }

@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use pest::prec_climber::Operator;
 
 use crate::ast::{ASTNode, ASTNodeType, Type};
-use crate::compile::CompileError;
+use crate::error::{CompileError, CompileResult};
 use crate::parse::{NumberLiteral, Range};
 use crate::tree::{NodeId, Tree};
 
@@ -518,8 +518,16 @@ pub struct Module {
 }
 
 impl Module {
-    pub fn from_ast(ast: &Tree<ASTNode>, node: NodeId) -> Result<Self, CompileError> {
-        let head = ast.find_head().ok_or(CompileError::CouldNotFindASTHead)?;
+    pub fn from_ast(ast: &Tree<ASTNode>, node: NodeId) -> CompileResult<Self> {
+        let mut result = CompileResult::new();
+
+        let head = match ast.find_head() {
+            Some(x) => x,
+            None => {
+                result.error(CompileError::CouldNotFindASTHead);
+                return result;
+            }
+        };
 
         let (id, in_values, out_values) = match &ast[head].data.node_type {
             ASTNodeType::ModuleDeclaration {
@@ -569,13 +577,15 @@ impl Module {
                             // This is a reset value
                             let rhs =
                                 Expression::from_ast(ast, ast.get_child_node(*n, 1).unwrap().id);
-                            let literal = match *rhs {
-                                Expression::NumberLiteral(literal) => literal,
+                            match *rhs {
+                                Expression::NumberLiteral(literal) => Some((lhs.variable, literal)),
                                 _ => {
-                                    panic!("RHS of reset value must be a literal");
+                                    result.error(CompileError::InvalidResetValue {
+                                        context: ast.get_child_node(*n, 1).unwrap().data.context.clone(),
+                                    });
+                                    None
                                 }
-                            };
-                            Some((lhs.variable, literal))
+                            }
                         } else {
                             None
                         }
@@ -592,7 +602,7 @@ impl Module {
             true,
         );
 
-        Ok(Self {
+        result.ok(Self {
             name: id.to_string(),
             inputs: in_values.iter().map(|(_, name)| name.to_string()).collect(),
             outputs: out_values
@@ -602,6 +612,8 @@ impl Module {
             variables,
             reset_values,
             block,
-        })
+        });
+
+        result
     }
 }
