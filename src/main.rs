@@ -44,7 +44,13 @@ fn compile(input: std::path::PathBuf, output: Option<std::path::PathBuf>) -> i32
 
     let input = std::fs::read_to_string(&inputpath).unwrap();
 
-    let mut a = parse(&input);
+    let mut a = match parse(&input) {
+        Ok(x) => x,
+        Err(e) => {
+            eprintln!("{:?}", e);
+            return -1;
+        }
+    };
     println!("{}\n", a);
 
     let result = compile_module(&mut a);

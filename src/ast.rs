@@ -65,13 +65,30 @@ impl StringContext {
             node_str: pair_str.to_string(),
         }
     }
+
+    pub fn from_location(toparse: &str, location: &pest::error::LineColLocation) -> StringContext {
+        match location {
+            pest::error::LineColLocation::Pos((line, col)) => {
+                let line_of = toparse.split('\n').nth(*line - 1).expect("Got a parse error on a line that doesn't exist!");
+                StringContext {
+                    line: *line,
+                    col: *col,
+                    line_str: line_of.to_string(),
+                    node_str: "".to_string(),
+                }
+            }
+            pest::error::LineColLocation::Span(_, _) => {
+                todo!();
+            }
+        }
+    }
 }
 
 impl Display for StringContext {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "line {} col {}: {}\n{}{}^",
+            "line {} col {}: {}\n{}\n{}^",
             self.line,
             self.col,
             self.node_str,

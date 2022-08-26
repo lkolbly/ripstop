@@ -14,6 +14,10 @@ pub enum CompileError {
     TreeError {
         err: TreeError,
     },
+    ParseError {
+        expected: Vec<String>,
+        location: StringContext,//pest::error::LineColLocation,
+    },
     UndeclaredVariable {
         context: StringContext,
     },
@@ -67,6 +71,7 @@ impl std::fmt::Debug for CompileError {
         match self {
             CompileError::CouldNotFindASTHead => write!(f, "Could not find AST head."),
             CompileError::TreeError { err } => write!(f, "Tree error: {:?}", err),
+            CompileError::ParseError { expected, location } => include_position(location, &format!("Parse error: Expected one of {:?}", expected)),
             CompileError::UndeclaredVariable { context } => {
                 include_position(context, "Undeclared variable")
             }

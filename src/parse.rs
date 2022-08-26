@@ -1,6 +1,8 @@
 use crate::ast::ASTNode;
 use crate::ast::ASTNodeType;
+use crate::ast::StringContext;
 use crate::ast::Type;
+use crate::error::CompileError;
 use crate::tree::NodeId;
 use crate::tree::Tree;
 
@@ -35,15 +37,26 @@ lazy_static! {
     ]);
 }
 
-pub fn parse(toparse: &str) -> Tree<ASTNode> {
-    let parsed = RipstopParser::parse(Rule::module_declaration, toparse)
-        .expect("Parse failed!")
-        .next()
-        .unwrap();
+pub fn parse(toparse: &str) -> Result<Tree<ASTNode>, CompileError> {
+    let mut parsed = match RipstopParser::parse(Rule::module_declaration, toparse) {
+        Ok(x) => x,
+        Err(e) => {
+            match e.variant {
+                pest::error::ErrorVariant::ParsingError { positives, negatives } => {
+                    println!("{:?} {:?}", positives, negatives);
+                    return Err(CompileError::ParseError { expected: positives.iter().map(|rule| format!("{:?}", rule)).collect(), location: StringContext::from_location(toparse, &e.line_col) });
+                }
+                pest::error::ErrorVariant::CustomError { message } => {
+                    todo!();
+                }
+            }
+        }
+    };
+    let parsed = parsed.next().unwrap();
 
     let mut tree = Tree::<ASTNode>::new();
     parse_value(&mut tree, parsed);
-    return tree;
+    return Ok(tree);
 
     fn parse_value(tree: &mut Tree<ASTNode>, pair: Pair<'_, Rule>) -> Option<NodeId> {
         let rule = pair.as_rule();
