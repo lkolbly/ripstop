@@ -204,7 +204,9 @@ fn get_node_type(
 fn verify(
     tree: &Tree<ASTNode>,
     variables: &HashMap<String, VarBounds>,
-) -> Result<(), CompileError> {
+) -> CompileResult<()> {
+    let mut result = CompileResult::new();
+
     //Type verification, done bottom-up, keeping track of each nodes' return type
     //Done "recursively" for each assignment
     for n in tree {
@@ -212,8 +214,8 @@ fn verify(
         match &tree[n].data.node_type {
             ASTNodeType::Assign => {
                 let children = tree[n].children.clone().unwrap();
-                let lhs_t = tree.recurse_iterative(children[0], get_node_type, variables)?;
-                let rhs_t = tree.recurse_iterative(children[1], get_node_type, variables)?;
+                let lhs_t = singleerror!(result, tree.recurse_iterative(children[0], get_node_type, variables));
+                let rhs_t = singleerror!(result, tree.recurse_iterative(children[1], get_node_type, variables));
 
                 // Coerce bits<1> to bit
                 let lhs_t = match lhs_t {
@@ -227,7 +229,7 @@ fn verify(
 
                 if lhs_t != rhs_t {
                     let rhs = &tree[children[1]];
-                    return Err(CompileError::MismatchedTypes {
+                    result.error(CompileError::MismatchedTypes {
                         context: rhs.data.context.clone(),
                         current_type: rhs_t,
                         needed_type: lhs_t,
@@ -237,7 +239,8 @@ fn verify(
             _ => (),
         }
     }
-    Ok(())
+    result.ok(());
+    result
 }
 
 /// Returns the verilog equivalent of adding together `lhs` and `rhs`. At the moment, this supports addition between two nodes of type `VariableReference`
@@ -500,7 +503,7 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> CompileResult<Tree<VNode>> {
         let variables: HashMap<String, VarBounds> = singleerror!(result, get_var_bounds(tree));
 
         //Before creating the tree, verify it
-        singleerror!(result, verify(tree, &variables));
+        logerror!(result, verify(tree, &variables));
     }
 
     let module = logerror!(result, Module::from_ast(tree, head));
