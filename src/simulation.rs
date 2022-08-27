@@ -156,7 +156,7 @@ impl Module {
         })
     }
 
-    pub fn instantiate(&self) -> Instance {
+    pub fn instantiate(self) -> Instance {
         Instance::new(self)
     }
 }
@@ -216,13 +216,13 @@ impl Values {
     }
 }
 
-pub struct Instance<'a> {
-    module: &'a Module,
+pub struct Instance {
+    module: Module,
     proc: Popen,
 }
 
-impl<'a> Instance<'a> {
-    fn new(module: &'a Module) -> Self {
+impl Instance {
+    fn new(module: Module) -> Self {
         let mut p = subprocess::Popen::create(
             &["./a.out"],
             subprocess::PopenConfig {
