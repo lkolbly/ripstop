@@ -1,0 +1,17 @@
+### CODE
+
+module operator_precedence_comparison(bits<4> a, bits<4> b) -> (bit c) {
+    if a[t] == b[t] + 4'd1 {
+        c[t] = 1'd1;
+    } else {
+        c[t] = 1'd0;
+    }
+}
+
+### DATA
+rst,a in 4,b in 4,c out 1
+1,0,0,x
+0,3,3,0
+0,3,4,0
+0,4,3,1
+0,0,15,1

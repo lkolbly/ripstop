@@ -1,0 +1,23 @@
+### CODE
+
+module conditional_multi_time_diff_vars(bit a, bit b, bit sel) -> (bit c, bit d) {
+    if sel[t-1] {
+        c[t] = b[t-1];
+        d[t-1] = b[t-1];
+    } else {
+        c[t] = a[t-1];
+        d[t-1] = a[t-1];
+    }
+}
+
+### DATA
+rst,a in 1,b in 1,sel in 1,c out 1,d out 1
+1,0,0,0,x,x
+1,0,0,0,x,x
+0,1,0,0,0,1
+0,1,0,1,1,0
+0,1,0,1,0,0
+
+// If we switch to b=1, d should update immediately, c after a timestep
+0,0,1,1,0,1
+0,0,1,1,1,1

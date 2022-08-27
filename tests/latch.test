@@ -1,0 +1,27 @@
+### CODE
+
+module latch(bit data_in, bit save) -> (bit data_out) {
+    bit state;
+    if save[t] {
+        state[t] = data_in[t];
+    }
+    data_out[t] = state[t];
+}
+
+### DATA
+rst,data_in in 1,save in 1,data_out out 1
+1,0,0,x
+1,0,0,x
+0,0,1,0
+0,0,0,0
+
+// Should retain value even when input changes
+0,1,0,0
+0,1,0,0
+
+// But changes immediately when save is set
+0,1,1,1
+
+// And retains
+0,0,0,1
+0,1,0,1

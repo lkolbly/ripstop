@@ -1,0 +1,25 @@
+### CODE
+
+module rings() -> (bits<4> onehot, bits<4> twisted) {
+    onehot[0] = 4'd1;
+    onehot[t] = onehot[t-1][2:0] ++ onehot[t-1][3];
+
+    twisted[0] = 4'd0;
+    twisted[t] = twisted[t-1][2:0] ++ ((~twisted[t-1])[3]);
+    //twisted[t] = twisted[t-1][2:0] ++ ~twisted[t-1][3];
+}
+
+### DATA
+rst,onehot out 4,twisted out 4
+1,x,x
+1,1,0
+1,1,0
+0,1,0
+0,2,1
+0,4,3
+0,8,7
+0,1,15
+0,2,7
+0,4,3
+0,8,1
+0,1,0
