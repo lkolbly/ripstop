@@ -40,13 +40,10 @@ module main();
             c = $fgetc('h8000_0000);
             if (c == 104) begin
                 #5;
-                for (integer i = 0; i < {{output_words}}; i++) begin
-                    $fwrite('h8000_0001, "%u", data_out[31:0]);
-                    {% if output_size > 32 %}
-                    data_out = {32'd0, data_out[{{output_size - 1}}:32]};
-                    {% endif %}
-                end
-                $fflush('h8000_0001);
+                {% for word in output_word_iterator %}
+                $fwrite('h8000_0001, "%u", data_out[{{word * 32 + 31}}:{{word * 32}}]);
+                {% endfor %}
+               $fflush('h8000_0001);
             end else if (c == 105) begin
                 continue = 0;
             end else if (c == 106) begin

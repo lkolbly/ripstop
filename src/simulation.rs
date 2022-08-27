@@ -116,6 +116,7 @@ impl Module {
 
         let input_bytes = input_size / 8;
         let output_words = output_size / 32;
+        let output_word_iterator: Vec<u32> = (0..output_words).collect();
 
         let mut context = tera::Context::new();
         context.insert("compiled", &compiled);
@@ -126,6 +127,7 @@ impl Module {
         context.insert("output_size", &output_size);
         context.insert("input_bytes", &input_bytes);
         context.insert("output_words", &output_words);
+        context.insert("output_word_iterator", &output_word_iterator);
         let harness = tera.render("simulation_harness.v", &context).unwrap();
 
         {
