@@ -57,7 +57,7 @@ module main();
                 #period;
             end else if (c == 109) begin
                 for (integer i = 0; i < {{input_bytes}}; i++) begin
-                    data_in = {data_in[{{input_size - 8 - 1}}:0], $fgetc('h8000_0000)};
+                    data_in = {$fgetc('h8000_0000), data_in[{{input_size - 1}}:8]};
                 end
             end else begin
                 $fwrite('h8000_0002, "Unexpected command %d", c);

@@ -3,6 +3,7 @@ extern crate pest;
 extern crate pest_derive;
 
 use clap::{Parser, Subcommand};
+use std::collections::HashMap;
 use std::io::{Read, Write};
 
 mod ast;
@@ -106,18 +107,54 @@ fn main() {
             let m = crate::simulation::Module::new(input).unwrap();
             let mut instance = m.instantiate();
 
-            instance.reset_step(0);
-            instance.reset_step(0);
+            instance.reset_step(crate::simulation::Values(HashMap::from([
+                ("data_in".to_string(), 0),
+                ("save".to_string(), 0),
+            ])));
+            instance.reset_step(crate::simulation::Values(HashMap::from([
+                ("data_in".to_string(), 0),
+                ("save".to_string(), 0),
+            ])));
 
             for i in 0..10 {
-                println!("{}", instance.step(0));
+                println!(
+                    "{:?}",
+                    instance.step(crate::simulation::Values(HashMap::from([
+                        ("data_in".to_string(), 0),
+                        ("save".to_string(), 0),
+                    ])))
+                );
             }
 
             // Bit 0 is data_in, bit 1 is save
-            println!("{}", instance.step(3)); // save 1
-            println!("Should be 1: {}", instance.step(0)); // Should still be 1
-            println!("Should be 1: {}", instance.step(0)); // Should still be 1
-            println!("Should be 0: {}", instance.step(2)); // save 0
+            println!(
+                "{:?}",
+                instance.step(crate::simulation::Values(HashMap::from([
+                    ("data_in".to_string(), 1),
+                    ("save".to_string(), 1),
+                ])))
+            ); // save 1
+            println!(
+                "Should be 1: {:?}",
+                instance.step(crate::simulation::Values(HashMap::from([
+                    ("data_in".to_string(), 0),
+                    ("save".to_string(), 0),
+                ])))
+            ); // Should still be 1
+            println!(
+                "Should be 1: {:?}",
+                instance.step(crate::simulation::Values(HashMap::from([
+                    ("data_in".to_string(), 1),
+                    ("save".to_string(), 0),
+                ])))
+            ); // Should still be 1
+            println!(
+                "Should be 0: {:?}",
+                instance.step(crate::simulation::Values(HashMap::from([
+                    ("data_in".to_string(), 0),
+                    ("save".to_string(), 1),
+                ])))
+            ); // save 0
 
             instance.finish();
         }

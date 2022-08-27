@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Write};
 use subprocess::{Popen, PopenConfig, Redirection};
@@ -12,6 +13,8 @@ pub struct Module {
     module_name: String,
     inputs: Vec<(String, Type, Range)>,
     outputs: Vec<(String, Type, Range)>,
+    input_bytes: usize,
+    output_words: usize,
 }
 
 impl Module {
@@ -148,11 +151,68 @@ impl Module {
             module_name: module.name,
             inputs,
             outputs,
+            input_bytes: input_bytes as usize,
+            output_words: output_words as usize,
         })
     }
 
     pub fn instantiate(&self) -> Instance {
         Instance::new(self)
+    }
+}
+
+#[derive(Debug)]
+pub struct Values(pub HashMap<String, u32>);
+
+impl Values {
+    fn to_bytes(&self, input_bytes: usize, mapping: &[(String, Type, Range)]) -> Vec<u8> {
+        let mut input_bytes = vec![0u8; input_bytes];
+        self.0.iter().for_each(|(k, v)| {
+            let (_, _, r) = mapping
+                .iter()
+                .filter(|(name, _, _)| name == k)
+                .next()
+                .expect("Couldn't find input");
+            let mask = (1 << (r.high - r.low + 1)) - 1;
+            if v & !mask != 0 {
+                panic!("Received step input that was too large for the mask!");
+            }
+            let v = v & mask;
+
+            let lo_byte = r.low / 8;
+            let hi_byte = r.high / 8;
+
+            input_bytes[lo_byte as usize] |= (v << (r.low % 8)) as u8;
+            for b in lo_byte + 1..=hi_byte {
+                input_bytes[b as usize] |= ((v >> (8 * (b - lo_byte) - r.low % 8)) & 0xff) as u8;
+            }
+        });
+        input_bytes
+    }
+
+    fn from_words(input: &[u32], mapping: &[(String, Type, Range)]) -> Self {
+        let mut result = HashMap::new();
+        mapping.iter().for_each(|(name, _, range)| {
+            let lo_word = range.low / 32;
+            let hi_word = range.high / 32;
+
+            if hi_word - lo_word > 1 {
+                // This is the case where a single field spans multiple words
+                // which is currently impossible, since Value uses u32 to
+                // represent values.
+                todo!();
+            }
+
+            let mask = (1 << (range.high - range.low + 1)) - 1;
+            let mut v = (input[lo_word as usize] >> (range.low % 32)) & mask;
+            if lo_word != hi_word {
+                v |= input[hi_word as usize] << (32 - range.low % 32);
+            }
+
+            result.insert(name.to_string(), v);
+        });
+
+        Self(result)
     }
 }
 
@@ -182,9 +242,11 @@ impl<'a> Instance<'a> {
         Self { module, proc: p }
     }
 
-    pub fn reset_step(&mut self, input: u32) -> u32 {
+    pub fn reset_step(&mut self, input: Values) -> Values {
         self.send_command(109);
-        self.stdin().write_all(&input.to_be_bytes());
+
+        let input = input.to_bytes(self.module.input_bytes, &self.module.inputs[..]);
+        self.stdin().write_all(&input[..]);
         self.stdin().flush();
 
         // Reset
@@ -195,9 +257,11 @@ impl<'a> Instance<'a> {
         o
     }
 
-    pub fn step(&mut self, input: u32) -> u32 {
+    pub fn step(&mut self, input: Values) -> Values {
         self.send_command(109);
-        self.stdin().write_all(&input.to_be_bytes());
+
+        let input = input.to_bytes(self.module.input_bytes, &self.module.inputs[..]);
+        self.stdin().write_all(&input[..]);
         self.stdin().flush();
 
         // Clear reset
@@ -226,9 +290,105 @@ impl<'a> Instance<'a> {
         self.stdin().flush().unwrap();
     }
 
-    fn read_outputs(&self) -> u32 {
-        let mut v = [0; 4];
-        self.stdout().read_exact(&mut v).unwrap();
-        u32::from_le_bytes(v)
+    fn read_outputs(&self) -> Values {
+        let mut v = vec![0u32; self.module.output_words];
+        for i in 0..self.module.output_words {
+            let mut word_value = [0u8; 4];
+            self.stdout().read_exact(&mut word_value).unwrap();
+            v[i] = u32::from_le_bytes(word_value);
+        }
+        Values::from_words(&v, &self.module.outputs)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_values_to_bytes() {
+        let mapping = [
+            ("data_in".to_string(), Type::Bit, Range { low: 0, high: 4 }),
+            ("save".to_string(), Type::Bit, Range { low: 5, high: 5 }),
+        ];
+
+        let res = Values(HashMap::from([
+            ("data_in".to_string(), 0),
+            ("save".to_string(), 1),
+        ]))
+        .to_bytes(1, &mapping[..]);
+        assert_eq!(res, &[32]);
+
+        let res = Values(HashMap::from([
+            ("data_in".to_string(), 10),
+            ("save".to_string(), 0),
+        ]))
+        .to_bytes(1, &mapping[..]);
+        assert_eq!(res, &[10]);
+
+        let res = Values(HashMap::from([
+            ("data_in".to_string(), 1),
+            ("save".to_string(), 1),
+        ]))
+        .to_bytes(1, &mapping[..]);
+        assert_eq!(res, &[33]);
+    }
+
+    #[test]
+    fn test_values_to_bytes_bridging_bytes() {
+        let mapping = [
+            ("a".to_string(), Type::Bit, Range { low: 0, high: 4 }),
+            ("b".to_string(), Type::Bit, Range { low: 5, high: 13 }),
+            ("c".to_string(), Type::Bit, Range { low: 14, high: 20 }),
+        ];
+
+        let res = Values(HashMap::from([
+            ("a".to_string(), 10),
+            ("b".to_string(), 123),
+            ("c".to_string(), 19),
+        ]))
+        .to_bytes(3, &mapping[..]);
+        assert_eq!(res, &[0x6a, 0xcf, 0x4]);
+    }
+
+    #[test]
+    fn test_values_to_bytes_multibyte() {
+        let mapping = [
+            ("a".to_string(), Type::Bit, Range { low: 0, high: 9 }),
+            ("b".to_string(), Type::Bit, Range { low: 10, high: 13 }),
+            ("c".to_string(), Type::Bit, Range { low: 14, high: 35 }),
+        ];
+
+        let res = Values(HashMap::from([
+            ("a".to_string(), 300),
+            ("b".to_string(), 5),
+            ("c".to_string(), 1_000_000),
+        ]))
+        .to_bytes(5, &mapping[..]);
+        assert_eq!(res, &[0x2c, 0x15, 0x90, 0xd0, 0x3]);
+    }
+
+    #[test]
+    fn test_values_from_words() {
+        let mapping = [
+            ("data_in".to_string(), Type::Bit, Range { low: 0, high: 4 }),
+            ("save".to_string(), Type::Bit, Range { low: 5, high: 5 }),
+        ];
+
+        let values = Values::from_words(&[32], &mapping);
+        assert_eq!(*values.0.get("data_in").unwrap(), 0);
+        assert_eq!(*values.0.get("save").unwrap(), 1);
+    }
+
+    #[test]
+    fn test_values_from_words_word_boundary() {
+        let mapping = [
+            ("a".to_string(), Type::Bit, Range { low: 0, high: 28 }),
+            ("b".to_string(), Type::Bit, Range { low: 29, high: 37 }),
+        ];
+
+        let values = Values::from_words(&[0x600f_4240, 0x0f], &mapping);
+        assert_eq!(*values.0.get("a").unwrap(), 1_000_000);
+        assert_eq!(*values.0.get("b").unwrap(), 123);
     }
 }
