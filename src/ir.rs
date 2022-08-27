@@ -581,7 +581,12 @@ impl Module {
                                 Expression::NumberLiteral(literal) => Some((lhs.variable, literal)),
                                 _ => {
                                     result.error(CompileError::InvalidResetValue {
-                                        context: ast.get_child_node(*n, 1).unwrap().data.context.clone(),
+                                        context: ast
+                                            .get_child_node(*n, 1)
+                                            .unwrap()
+                                            .data
+                                            .context
+                                            .clone(),
                                     });
                                     None
                                 }

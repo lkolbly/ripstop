@@ -14,6 +14,7 @@ use pest::prec_climber::Operator;
 use pest::prec_climber::PrecClimber;
 use pest::Parser;
 
+use serde::Serialize;
 use std::{cell::RefCell, rc::Rc};
 
 #[derive(Parser)]
@@ -40,17 +41,21 @@ lazy_static! {
 pub fn parse(toparse: &str) -> Result<Tree<ASTNode>, CompileError> {
     let mut parsed = match RipstopParser::parse(Rule::module_declaration, toparse) {
         Ok(x) => x,
-        Err(e) => {
-            match e.variant {
-                pest::error::ErrorVariant::ParsingError { positives, negatives } => {
-                    println!("{:?} {:?}", positives, negatives);
-                    return Err(CompileError::ParseError { expected: positives.iter().map(|rule| format!("{:?}", rule)).collect(), location: StringContext::from_location(toparse, &e.line_col) });
-                }
-                pest::error::ErrorVariant::CustomError { message } => {
-                    todo!();
-                }
+        Err(e) => match e.variant {
+            pest::error::ErrorVariant::ParsingError {
+                positives,
+                negatives,
+            } => {
+                println!("{:?} {:?}", positives, negatives);
+                return Err(CompileError::ParseError {
+                    expected: positives.iter().map(|rule| format!("{:?}", rule)).collect(),
+                    location: StringContext::from_location(toparse, &e.line_col),
+                });
             }
-        }
+            pest::error::ErrorVariant::CustomError { message } => {
+                todo!();
+            }
+        },
     };
     let parsed = parsed.next().unwrap();
 
@@ -253,7 +258,7 @@ impl SignedInteger {
 
 /// Represents a doubly-inclusive range, for example [6:4] to indicate bits
 /// 6, 5, and 4 of a bits.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 pub struct Range {
     pub low: u32,
     pub high: u32,

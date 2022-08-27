@@ -1,8 +1,9 @@
 use crate::{error::CompileError, parse::Rule};
 use pest::iterators::Pair;
+use serde::Serialize;
 use std::fmt::Display;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum Type {
     None,
     Bit,
@@ -69,7 +70,10 @@ impl StringContext {
     pub fn from_location(toparse: &str, location: &pest::error::LineColLocation) -> StringContext {
         match location {
             pest::error::LineColLocation::Pos((line, col)) => {
-                let line_of = toparse.split('\n').nth(*line - 1).expect("Got a parse error on a line that doesn't exist!");
+                let line_of = toparse
+                    .split('\n')
+                    .nth(*line - 1)
+                    .expect("Got a parse error on a line that doesn't exist!");
                 StringContext {
                     line: *line,
                     col: *col,

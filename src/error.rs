@@ -16,7 +16,7 @@ pub enum CompileError {
     },
     ParseError {
         expected: Vec<String>,
-        location: StringContext,//pest::error::LineColLocation,
+        location: StringContext, //pest::error::LineColLocation,
     },
     UndeclaredVariable {
         context: StringContext,
@@ -54,7 +54,7 @@ pub enum CompileError {
     },
 
     VariableNotAssigned {
-        var_name: String
+        var_name: String,
     },
 }
 

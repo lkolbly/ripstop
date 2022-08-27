@@ -67,7 +67,7 @@ fn compile(input: std::path::PathBuf, output: Option<std::path::PathBuf>) -> i32
         }
         return -1;
     }
-    let v_a = result.result.unwrap();
+    let (_, v_a) = result.result.unwrap();
 
     println!("Bare tree:\n\n{}\n\n", v_a);
 
@@ -103,22 +103,22 @@ fn main() {
             std::process::exit(compile(input, output));
         }
         Commands::Simulate { input } => {
-            let m = crate::simulation::Module {};
+            let m = crate::simulation::Module::new(input).unwrap();
             let mut instance = m.instantiate();
-        
+
             instance.reset_step(0);
             instance.reset_step(0);
-        
+
             for i in 0..10 {
                 println!("{}", instance.step(0));
             }
-        
+
             // Bit 0 is data_in, bit 1 is save
             println!("{}", instance.step(3)); // save 1
             println!("Should be 1: {}", instance.step(0)); // Should still be 1
             println!("Should be 1: {}", instance.step(0)); // Should still be 1
             println!("Should be 0: {}", instance.step(2)); // save 0
-        
+
             instance.finish();
         }
     }

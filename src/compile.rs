@@ -201,10 +201,7 @@ fn get_node_type(
 
 /// Currently, this takes the input tree and does the following:
 /// * Verifies that types in assignments and expressions match up correctly (i.e. verifies types)
-fn verify(
-    tree: &Tree<ASTNode>,
-    variables: &HashMap<String, VarBounds>,
-) -> CompileResult<()> {
+fn verify(tree: &Tree<ASTNode>, variables: &HashMap<String, VarBounds>) -> CompileResult<()> {
     let mut result = CompileResult::new();
 
     //Type verification, done bottom-up, keeping track of each nodes' return type
@@ -214,8 +211,14 @@ fn verify(
         match &tree[n].data.node_type {
             ASTNodeType::Assign => {
                 let children = tree[n].children.clone().unwrap();
-                let lhs_t = singleerror!(result, tree.recurse_iterative(children[0], get_node_type, variables));
-                let rhs_t = singleerror!(result, tree.recurse_iterative(children[1], get_node_type, variables));
+                let lhs_t = singleerror!(
+                    result,
+                    tree.recurse_iterative(children[0], get_node_type, variables)
+                );
+                let rhs_t = singleerror!(
+                    result,
+                    tree.recurse_iterative(children[1], get_node_type, variables)
+                );
 
                 // Coerce bits<1> to bit
                 let lhs_t = match lhs_t {
@@ -487,7 +490,7 @@ fn compile_var_ref_from_string(
 }
 
 ///Compiles a single module into Verilog from an AST
-pub fn compile_module(tree: &mut Tree<ASTNode>) -> CompileResult<Tree<VNode>> {
+pub fn compile_module(tree: &mut Tree<ASTNode>) -> CompileResult<(Module, Tree<VNode>)> {
     let mut result = CompileResult::new();
 
     //A little bit of a workaround in order to make this work well with the ? operator
@@ -956,7 +959,7 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> CompileResult<Tree<VNode>> {
         singleerror!(result, v_tree.append_to(v_head, clock_edge));
     }
 
-    result.ok(v_tree);
+    result.ok((module, v_tree));
     result
 }
 
