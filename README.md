@@ -32,3 +32,16 @@ The compiler contains a (soon-to-be) rigorous test suite. To run it, follow thes
    ```
    ========================= 4 passed, 1 skipped in 0.07s =========================
    ```
+
+# Developing the Python module
+
+1. Create a python virtual environment:
+   ```
+   $ python3 -m venv venv
+   $ . ./venv/bin/activate
+   ```
+2. Install maturin
+   ```
+   $ pip install maturin
+   ```
+3. Run `maturin develop` to build the python module and install it into the virtual environment.
