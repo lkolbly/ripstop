@@ -10,6 +10,7 @@ mod compile;
 mod error;
 mod ir;
 mod parse;
+mod simulation;
 mod tree;
 mod verilog_ast;
 
@@ -35,6 +36,12 @@ enum Commands {
 
         #[clap(short, long, value_parser)]
         output: Option<std::path::PathBuf>,
+    },
+
+    /// Simulates a Ripstop program
+    Simulate {
+        #[clap(value_parser)]
+        input: std::path::PathBuf,
     },
 }
 
@@ -94,6 +101,25 @@ fn main() {
     match args.command {
         Commands::Build { input, output } => {
             std::process::exit(compile(input, output));
+        }
+        Commands::Simulate { input } => {
+            let m = crate::simulation::Module {};
+            let mut instance = m.instantiate();
+        
+            instance.reset_step(0);
+            instance.reset_step(0);
+        
+            for i in 0..10 {
+                println!("{}", instance.step(0));
+            }
+        
+            // Bit 0 is data_in, bit 1 is save
+            println!("{}", instance.step(3)); // save 1
+            println!("Should be 1: {}", instance.step(0)); // Should still be 1
+            println!("Should be 1: {}", instance.step(0)); // Should still be 1
+            println!("Should be 0: {}", instance.step(2)); // save 0
+        
+            instance.finish();
         }
     }
 }
