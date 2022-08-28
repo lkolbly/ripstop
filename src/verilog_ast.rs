@@ -72,6 +72,9 @@ pub enum VNode {
     Less {},
     LessEq {},
     Concatenate {},
+    BitwiseRightShift {
+        amount: u32,
+    },
 
     /// An index into a single value or range of an array. This is the parent of what it indexes
     ///
@@ -292,6 +295,13 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
             let mask: u32 = (1 << width) - 1;
             format!(
                 "{whitespace}((({}) >> {low}) & {width}'d{mask})",
+                verilog_ast_to_string(children[0], tree, 0),
+            )
+        }
+        VNode::BitwiseRightShift { amount } => {
+            let children = children.unwrap();
+            format!(
+                "{whitespace}(({}) >> {amount})",
                 verilog_ast_to_string(children[0], tree, 0),
             )
         }

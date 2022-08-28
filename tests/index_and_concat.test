@@ -1,0 +1,11 @@
+### CODE
+
+module index_and_concat(bits<4> pixel_col, bits<5> pixel_row, bits<16> charmem_data) -> (bits<16> fontmem_addr) {
+    fontmem_addr[t] = pixel_col[t] ++ pixel_row[t][3:0] ++ charmem_data[t][7:0];
+}
+
+### DATA
+rst,pixel_col in 4,pixel_row in 5,charmem_data in 16,fontmem_addr out 16
+1,0,0,0,x
+0,1,0,0,4096
+0,10,12,13,44045

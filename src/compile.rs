@@ -375,7 +375,17 @@ fn get_var_bounds(tree: &Tree<ASTNode>) -> Result<HashMap<String, VarBounds>, Co
     Ok(variables)
 }
 
-fn compile_ir_expression(expr: &Expression) -> Result<Tree<VNode>, CompileError> {
+struct IrCompilationState {
+    next_internal_var_id: usize,
+
+    /// (variable name, range high, range low, expression tree)
+    vars_to_declare: Vec<(String, u32, u32, Tree<VNode>)>,
+}
+
+fn compile_ir_expression(
+    state: &mut IrCompilationState,
+    expr: &Expression,
+) -> Result<Tree<VNode>, CompileError> {
     let mut vast = Tree::new();
 
     match expr {
@@ -398,8 +408,8 @@ fn compile_ir_expression(expr: &Expression) -> Result<Tree<VNode>, CompileError>
                 BinaryOperator::LessEq => VNode::LessEq {},
                 BinaryOperator::Concatenate => VNode::Concatenate {},
             });
-            let mut lhs = compile_ir_expression(lhs)?;
-            let mut rhs = compile_ir_expression(rhs)?;
+            let mut lhs = compile_ir_expression(state, lhs)?;
+            let mut rhs = compile_ir_expression(state, rhs)?;
             vast.append_tree(node, &mut lhs);
             vast.append_tree(node, &mut rhs);
         }
@@ -407,25 +417,47 @@ fn compile_ir_expression(expr: &Expression) -> Result<Tree<VNode>, CompileError>
             operation,
             operatee,
         } => {
-            let node = vast.new_node(match operation {
-                UnaryOperator::Negation => VNode::BitwiseInverse {},
-                UnaryOperator::Index(range) => VNode::Index {
+            if let UnaryOperator::Index(range) = operation {
+                // This is an index! We have to put this in its own variable
+                // Basically, we're converting this:
+                // assign expr_were_evaluating = (a + b)[6:4];
+                // into this:
+                // wire[2:0] __ripstop_index_deferral_N;
+                // assign __ripstop_index_deferral_N = (a + b) >> 4;
+                // assign expr_were_evaluating = __ripstop_index_deferral_N;
+                let lhs = compile_ir_expression(state, operatee)?;
+                let varname = format!("__ripstop_index_deferral_{}", state.next_internal_var_id);
+                state.next_internal_var_id += 1;
+                state
+                    .vars_to_declare
+                    .push((varname.clone(), range.high, range.low, lhs));
+
+                vast.new_node(VNode::VariableReference { var_id: varname });
+
+                /*let node = VNode::Index {
                     high: range.high as usize,
                     low: range.low as usize,
-                },
-            });
-            let mut lhs = compile_ir_expression(operatee)?;
-            vast.append_tree(node, &mut lhs)?;
+                };*/
+            } else {
+                let node = vast.new_node(match operation {
+                    UnaryOperator::Negation => VNode::BitwiseInverse {},
+                    UnaryOperator::Index(range) => {
+                        panic!("Should have been handled in the above case");
+                    }
+                });
+                let mut lhs = compile_ir_expression(state, operatee)?;
+                vast.append_tree(node, &mut lhs)?;
+            }
         }
         Expression::Ternary {
             condition,
             lhs,
             rhs,
         } => {
-            let mut condition = compile_ir_expression(condition)?;
+            let mut condition = compile_ir_expression(state, condition)?;
             let node = vast.new_node(VNode::Ternary {});
-            let mut lhs = compile_ir_expression(lhs)?;
-            let mut rhs = compile_ir_expression(rhs)?;
+            let mut lhs = compile_ir_expression(state, lhs)?;
+            let mut rhs = compile_ir_expression(state, rhs)?;
             vast.append_tree(node, &mut condition);
             vast.append_tree(node, &mut lhs);
             vast.append_tree(node, &mut rhs);
@@ -774,6 +806,10 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> CompileResult<(Module, Tree<V
     }
 
     // Compile the assignments
+    let mut ir_compile_state = IrCompilationState {
+        next_internal_var_id: 0,
+        vars_to_declare: vec![],
+    };
     for (var_id, rhs) in module.block.assignments.iter() {
         let verilog_name = variable_name_relative(var_id, 0);
 
@@ -791,17 +827,17 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> CompileResult<(Module, Tree<V
         };
 
         let assign_vnode = v_tree.new_node(VNode::AssignKeyword {});
-        singleerror!(result, v_tree.append_to(head, assign_vnode));
+        singleerror!(result, v_tree.append_to(v_head, assign_vnode));
 
         singleerror!(result, v_tree.append_to(assign_vnode, lhs_vnode));
 
         if !rhs.is_combinatorial() {
             let mut rhs = rhs.clone();
             rhs.shift_time(1);
-            let mut rhs = singleerror!(result, compile_ir_expression(&rhs));
+            let mut rhs = singleerror!(result, compile_ir_expression(&mut ir_compile_state, &rhs));
             singleerror!(result, v_tree.append_tree(assign_vnode, &mut rhs));
         } else {
-            let mut rhs = singleerror!(result, compile_ir_expression(rhs));
+            let mut rhs = singleerror!(result, compile_ir_expression(&mut ir_compile_state, rhs));
             singleerror!(result, v_tree.append_tree(assign_vnode, &mut rhs));
         }
 
@@ -818,6 +854,33 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> CompileResult<(Module, Tree<V
 
             singleerror!(result, v_tree.append_to(declaration, reg_head));
         }
+    }
+
+    // Declare & assign all the internal variables we need
+    for (name, high, low, mut value) in ir_compile_state.vars_to_declare.drain(..) {
+        // Declare the variable
+        let varref = VNode::VariableReference {
+            var_id: name.clone(),
+        };
+        let varref = v_tree.new_node(varref);
+        let declaration = VNode::WireDeclare {
+            bits: (high - low + 1) as usize,
+        };
+        let declaration = v_tree.new_node(declaration);
+        singleerror!(result, v_tree.append_to(v_head, declaration));
+        singleerror!(result, v_tree.append_to(declaration, varref));
+
+        // Construct the shifted value
+        let shift_node = v_tree.new_node(VNode::BitwiseRightShift { amount: low });
+        singleerror!(result, v_tree.append_tree(shift_node, &mut value));
+
+        let assign_node = v_tree.new_node(VNode::AssignKeyword {});
+        let varref = v_tree.new_node(VNode::VariableReference {
+            var_id: name.clone(),
+        });
+        singleerror!(result, v_tree.append_to(assign_node, varref));
+        singleerror!(result, v_tree.append_to(assign_node, shift_node));
+        singleerror!(result, v_tree.append_to(v_head, assign_node));
     }
 
     /*//User-defined logic compilation (uses the compile_expression function when encountering an expression)
