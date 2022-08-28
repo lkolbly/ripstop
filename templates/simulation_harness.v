@@ -1,3 +1,5 @@
+`timescale 10ns/10ns
+
 {{compiled}}
 
 
@@ -20,11 +22,11 @@ module main();
         .rst(rst)
     );
 
-    localparam period = 15;
+    localparam period = 3;
 
     always begin
         clk = ~clk;
-        #10;
+        #2;
     end
 
     initial begin
@@ -39,7 +41,7 @@ module main();
         while (continue) begin
             c = $fgetc('h8000_0000);
             if (c == 104) begin
-                #5;
+                #1;
                 {% for word in output_word_iterator %}
                 $fwrite('h8000_0001, "%u", data_out[{{word * 32 + 31}}:{{word * 32}}]);
                 {% endfor %}
