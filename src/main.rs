@@ -61,7 +61,8 @@ fn compile(input: std::path::PathBuf, output: Option<std::path::PathBuf>) -> i32
     };
     println!("{}\n", a);
 
-    let result = compile_module(&mut a);
+    let result = compile_document(&mut a);
+    //let result = compile_module(&mut a);
     if result.errors.len() > 0 {
         for error in result.errors.iter() {
             eprintln!("{:?}", error);

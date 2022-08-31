@@ -33,14 +33,19 @@ impl Module {
         };
         println!("{}\n", a);
 
-        let result = compile_module(&mut a);
+        let result = compile_document(&mut a);
         if result.errors.len() > 0 {
             for error in result.errors.iter() {
                 eprintln!("{:?}", error);
             }
             return None;
         }
-        let (module, v_a) = result.result.unwrap();
+        let (mut modules, v_a) = result.result.unwrap();
+
+        if modules.len() != 1 {
+            todo!("Currently can't simulate >1 module, b/c we don't know the top");
+        }
+        let module = modules.drain(..).next().unwrap();
 
         println!("Bare tree:\n\n{}\n\n", v_a);
 

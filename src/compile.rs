@@ -1,11 +1,14 @@
-use crate::ast::{StringContext, Type};
+use crate::{
+    ast::{StringContext, Type},
+    ir::ModuleDeclaration,
+};
 use std::collections::{HashMap, HashSet};
 
 use crate::{
     ast::{ASTNode, ASTNodeType},
     error::{CompileError, CompileResult},
     ir::{BinaryOperator, Expression, Module, UnaryOperator},
-    logerror, singleerror,
+    logerror, noncriterr, singleerror,
     tree::{NodeId, Tree, TreeError},
     verilog_ast::{AlwaysBeginTriggerType, VNode},
 };
@@ -521,15 +524,86 @@ fn compile_var_ref_from_string(
     Ok(tree)
 }
 
-///Compiles a single module into Verilog from an AST
-pub fn compile_module(tree: &mut Tree<ASTNode>) -> CompileResult<(Module, Tree<VNode>)> {
+pub fn compile_document(tree: &mut Tree<ASTNode>) -> CompileResult<(Vec<Module>, Tree<VNode>)> {
     let mut result = CompileResult::new();
 
-    //A little bit of a workaround in order to make this work well with the ? operator
+    let declarations = logerror!(result, get_module_declarations(tree));
+
+    let mut vast = Tree::new();
+    let v_head = vast.new_node(VNode::Document);
+
     let head = singleerror!(
         result,
         tree.find_head().ok_or(CompileError::CouldNotFindASTHead)
     );
+    let children: Vec<_> = tree
+        .get_node(head)
+        .unwrap()
+        .children
+        .as_ref()
+        .unwrap()
+        .to_owned();
+    let mut modules = vec![];
+    for &child in children.iter() {
+        if let Some((module, mut module_vast)) = noncriterr!(result, compile_module(tree, child)) {
+            println!("Compiled module {}", module.name);
+            modules.push(module);
+            singleerror!(result, vast.append_tree(v_head, &mut module_vast));
+        }
+    }
+
+    println!("{:#?}", result.errors);
+
+    result.ok((modules, vast));
+    result
+}
+
+fn get_module_declarations(tree: &mut Tree<ASTNode>) -> CompileResult<Vec<ModuleDeclaration>> {
+    let mut result = CompileResult::new();
+
+    // First, parse all of the declarations
+    let head = singleerror!(
+        result,
+        tree.find_head().ok_or(CompileError::CouldNotFindASTHead)
+    );
+
+    let mut modules = vec![];
+    for child in tree
+        .get_node(head)
+        .unwrap()
+        .children
+        .as_ref()
+        .unwrap()
+        .iter()
+    {
+        match &tree.get_node(*child).unwrap().data.node_type {
+            ASTNodeType::ModuleDeclaration {
+                id,
+                in_values,
+                out_values,
+            } => {
+                if let Some(module) = noncriterr!(result, ModuleDeclaration::from_ast(tree, *child))
+                {
+                    println!("Found module {}", module.name);
+                    modules.push(module);
+                }
+            }
+            _ => {
+                panic!("Found top-level object which wasn't a module");
+            }
+        }
+    }
+
+    result.ok(modules);
+    result
+}
+
+///Compiles a single module into Verilog from an AST
+pub fn compile_module(
+    tree: &mut Tree<ASTNode>,
+    head: NodeId,
+) -> CompileResult<(Module, Tree<VNode>)> {
+    let mut result = CompileResult::new();
 
     // Type-check to make sure everything'll work
     {
@@ -677,7 +751,7 @@ pub fn compile_module(tree: &mut Tree<ASTNode>) -> CompileResult<(Module, Tree<V
                 singleerror!(result, v_tree.append_to(declaration, reg_head));
             }
 
-            singleerror!(result, v_tree.append_to(head, assign_node));
+            singleerror!(result, v_tree.append_to(v_head, assign_node));
         }
 
         // TODO: Calculate the ref_range based on what variables we actually use

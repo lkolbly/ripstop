@@ -22,6 +22,8 @@ impl fmt::Display for AlwaysBeginTriggerType {
 
 #[derive(Debug, Clone)]
 pub enum VNode {
+    Document,
+
     ///Copypasta'd from ast::Node
     ModuleDeclaration {
         id: String,
@@ -116,6 +118,10 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
     }
 
     let s = match &this_node.data {
+        VNode::Document => {
+            let children_string = get_children_string(children, tree, 0);
+            children_string
+        }
         VNode::ModuleDeclaration {
             id,
             in_values,

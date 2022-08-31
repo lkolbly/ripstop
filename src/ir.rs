@@ -508,6 +508,37 @@ impl Block {
 }
 
 #[derive(Debug)]
+pub struct ModuleDeclaration {
+    pub name: String,
+    pub inputs: Vec<(Type, String)>,
+    pub outputs: Vec<(Type, String)>,
+}
+
+impl ModuleDeclaration {
+    pub fn from_ast(ast: &Tree<ASTNode>, node: NodeId) -> CompileResult<Self> {
+        let mut result = CompileResult::new();
+
+        let (id, in_values, out_values) = match &ast[node].data.node_type {
+            ASTNodeType::ModuleDeclaration {
+                id,
+                in_values,
+                out_values,
+            } => (id, in_values, out_values),
+            _ => {
+                panic!("Tried to compile module which wasn't of type Node::ModuleDeclaration");
+            }
+        };
+
+        result.ok(Self {
+            name: id.to_string(),
+            inputs: in_values.to_owned(),
+            outputs: out_values.to_owned(),
+        });
+        result
+    }
+}
+
+#[derive(Debug)]
 pub struct Module {
     pub name: String,
     pub inputs: Vec<String>,
@@ -518,16 +549,8 @@ pub struct Module {
 }
 
 impl Module {
-    pub fn from_ast(ast: &Tree<ASTNode>, node: NodeId) -> CompileResult<Self> {
+    pub fn from_ast(ast: &Tree<ASTNode>, head: NodeId) -> CompileResult<Self> {
         let mut result = CompileResult::new();
-
-        let head = match ast.find_head() {
-            Some(x) => x,
-            None => {
-                result.error(CompileError::CouldNotFindASTHead);
-                return result;
-            }
-        };
 
         let (id, in_values, out_values) = match &ast[head].data.node_type {
             ASTNodeType::ModuleDeclaration {

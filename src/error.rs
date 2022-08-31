@@ -132,6 +132,7 @@ macro_rules! logerror {
         match $result.result {
             Some(x) => x,
             None => {
+                println!("Passing along error at {} {}", file!(), line!());
                 return $errors;
             }
         }
@@ -145,6 +146,14 @@ macro_rules! logerror {
     };
 }
 
+#[macro_export]
+macro_rules! noncriterr {
+    ($errors: ident, $result: expr) => {{
+        $errors.errors.append(&mut $result.errors);
+        $result.result
+    }};
+}
+
 /// result should be a Result<T, CompileError>
 #[macro_export]
 macro_rules! singleerror {
@@ -153,6 +162,7 @@ macro_rules! singleerror {
             Ok(x) => x,
             Err(e) => {
                 $errors.errors.push(CompileError::from(e));
+                println!("Passing along error at {} {}", file!(), line!());
                 return $errors;
             }
         }

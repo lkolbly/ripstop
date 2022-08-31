@@ -1,4 +1,5 @@
-module_declaration = { SOI ~ "module" ~ name ~ variable_declaration_list ~ "->" ~ variable_declaration_list ~ block ~ EOI }
+document = { SOI ~ module_declaration* ~ EOI }
+module_declaration = { "module" ~ name ~ variable_declaration_list ~ "->" ~ variable_declaration_list ~ block }
 
 name = ${ (ASCII_ALPHA | "_")+ ~ (ASCII_ALPHANUMERIC | "_")* }
 

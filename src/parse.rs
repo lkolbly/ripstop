@@ -39,7 +39,7 @@ lazy_static! {
 }
 
 pub fn parse(toparse: &str) -> Result<Tree<ASTNode>, CompileError> {
-    let mut parsed = match RipstopParser::parse(Rule::module_declaration, toparse) {
+    let mut parsed = match RipstopParser::parse(Rule::document, toparse) {
         Ok(x) => x,
         Err(e) => match e.variant {
             pest::error::ErrorVariant::ParsingError {
@@ -68,6 +68,7 @@ pub fn parse(toparse: &str) -> Result<Tree<ASTNode>, CompileError> {
         let mut inner_rules = pair.clone().into_inner();
 
         let node_type = match rule {
+            Rule::document => Some(ASTNodeType::Document),
             Rule::module_declaration => Some(ASTNodeType::ModuleDeclaration {
                 id: inner_rules.next().unwrap().as_str().to_string(),
                 in_values: parse_variable_declarations(inner_rules.next().unwrap()),

@@ -125,6 +125,8 @@ impl std::fmt::Debug for ASTNode {
 
 #[derive(Debug, Clone)]
 pub enum ASTNodeType {
+    /// This is the head of a document. It contains modules, struct definitions, constants, etc
+    Document,
     //This is the head of a module. The code within a module is entirely children of the module
     ModuleDeclaration {
         id: String,
