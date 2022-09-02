@@ -133,6 +133,10 @@ pub enum ASTNodeType {
         in_values: Vec<(Type, String)>,
         out_values: Vec<(Type, String)>,
     },
+    ModuleInstantiation {
+        module: String,
+        instance: String,
+    },
     //Some examples of generated VariableReferences:
     //my_var[t] => var_id: "my_var", t_offset: 0
     //my_var[t - 10] => var_id: "my_var", t_offset: -10

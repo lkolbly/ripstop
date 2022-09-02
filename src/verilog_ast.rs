@@ -32,6 +32,16 @@ pub enum VNode {
         out_values: Vec<(String, usize)>,
     },
 
+    ModuleInstantiation {
+        module: String,
+        instance: String,
+    },
+
+    ModuleInstantiationVariable {
+        portname: String,
+        variable: String,
+    },
+
     ///Declares each child as a register in a chain (i.e. `reg a, b, c, d[31:0];`)
     RegisterDeclare {
         bits: usize,
@@ -117,6 +127,19 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
             .join(&format!("\n{}", ""))
     }
 
+    fn get_comma_separated_children_string(
+        children: Option<Vec<NodeId>>,
+        tree: &Tree<VNode>,
+        num_whitespace: usize,
+    ) -> String {
+        children
+            .unwrap()
+            .iter()
+            .map(|n| verilog_ast_to_string(*n, tree, num_whitespace))
+            .collect::<Vec<_>>()
+            .join(&format!("\n{}", ","))
+    }
+
     let s = match &this_node.data {
         VNode::Document => {
             let children_string = get_children_string(children, tree, 0);
@@ -142,6 +165,14 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
             let all_values_string = all_values.join(",\n");
 
             format!("module {id} (\n{all_values_string}\n);\n{children_string}\nendmodule")
+        }
+        VNode::ModuleInstantiation { module, instance } => {
+            let children_string =
+                get_comma_separated_children_string(children, tree, next_num_whitespace);
+            format!("{whitespace}{module} {instance} (\n{children_string}\n{whitespace});")
+        }
+        VNode::ModuleInstantiationVariable { portname, variable } => {
+            format!("{whitespace}.{portname}({variable})")
         }
         VNode::RegisterDeclare { bits } => {
             if let Some(children) = children {

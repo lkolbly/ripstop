@@ -150,6 +150,25 @@ pub fn parse(toparse: &str) -> Result<Tree<ASTNode>, CompileError> {
                 Some(ASTNodeType::Conditional)
             }
             Rule::conditional_block => Some(ASTNodeType::Block),
+            Rule::instantiate_statement => {
+                println!("{:#?}", inner_rules);
+                let module = inner_rules.next().unwrap();
+                let instance = inner_rules.next().unwrap();
+
+                let module = match module.as_rule() {
+                    Rule::name => module.as_str().to_owned(),
+                    _ => {
+                        panic!("Module name must be a name");
+                    }
+                };
+                let instance = match instance.as_rule() {
+                    Rule::name => instance.as_str().to_owned(),
+                    _ => {
+                        panic!("Instance name must be a name");
+                    }
+                };
+                Some(ASTNodeType::ModuleInstantiation { module, instance })
+            }
             Rule::EOI => None,
             Rule::number_literal => Some(ASTNodeType::NumberLiteral(NumberLiteral::from_tree(
                 pair.clone(),

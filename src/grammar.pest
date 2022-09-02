@@ -3,6 +3,8 @@ module_declaration = { "module" ~ name ~ variable_declaration_list ~ "->" ~ vari
 
 name = ${ (ASCII_ALPHA | "_")+ ~ (ASCII_ALPHANUMERIC | "_")* }
 
+variable_path_list = { name ~ ("." ~ name)* }
+
 variable_declaration_list = { "(" ~ (variable_declaration)* ~ ("," ~ variable_declaration)* ~ ")" }
 variable_declaration = { type_then_space ~ name }
 type_then_space = ${ variable_type ~ WHITESPACE }
@@ -12,7 +14,7 @@ bits_type = { "bits" ~ "<" ~ number_literal ~ ">" }
 
 block = _{ "{" ~ statement* ~ "}" }
 
-indexed_variable = { name ~ "[" ~ variable_index ~ "]" }
+indexed_variable = { variable_path_list ~ "[" ~ variable_index ~ "]" }
 variable_index_relative = { "t" ~ (( addition | subtraction ) ~ number_literal)? }
 variable_index_absolute = { signed_integer }
 variable_index = _{ variable_index_relative | variable_index_absolute }
@@ -20,7 +22,7 @@ variable_index = _{ variable_index_relative | variable_index_absolute }
 range = { pos_integer ~ (":" ~ pos_integer)? }
 bits_index = { "[" ~ range ~ "]" }
 
-statement = _{ assignment | declaration_statement | conditional }
+statement = _{ assignment | declaration_statement | conditional | instantiate_statement }
 declaration_statement = _{ variable_declaration ~ ";" }
 assignment = { indexed_variable ~ "=" ~ expression ~ ";" }
 expression = _{ binary_operation | index_expression | indexed_variable | unary_operation | parenthetical_expression | number_literal }
@@ -29,6 +31,8 @@ parenthetical_expression = _{ "(" ~ expression ~ ")" }
 conditional = { "if" ~ expression ~ conditional_block ~ ("else" ~ "if" ~ expression ~ conditional_block)* ~ ("else" ~ conditional_block)? }
 conditional_block = { "{" ~ conditional_statement* ~ "}" }
 conditional_statement = _{ assignment | conditional }
+
+instantiate_statement = { "instantiate" ~ name ~ "as" ~ name ~ ";" }
 
 index_expression = { index_operand ~ bits_index }
 index_operand = _{ parenthetical_expression | indexed_variable }

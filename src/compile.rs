@@ -306,7 +306,10 @@ fn verify(tree: &Tree<ASTNode>, variables: &HashMap<String, VarBounds>) -> Compi
 /// Variables that are inputs or outputs will always contain 0 within the closed range \[lowest, highest\].
 ///
 /// Result is given as a hashmap mapping variable names (strings) to `VarBounds` structs.
-fn get_var_bounds(tree: &Tree<ASTNode>) -> Result<HashMap<String, VarBounds>, CompileError> {
+fn get_var_bounds(
+    tree: &Tree<ASTNode>,
+    modules: &Vec<ModuleDeclaration>,
+) -> Result<HashMap<String, VarBounds>, CompileError> {
     //A list of all the variables and their t-offsets. If the variable has only been declared (neither referenced or assigned), then the t-offset will be `None`
     //Reminder: a positive t-offset represents [t+n] and a negative represents [t-n]
     let mut variables: HashMap<String, VarBounds> = HashMap::new();
@@ -345,6 +348,20 @@ fn get_var_bounds(tree: &Tree<ASTNode>) -> Result<HashMap<String, VarBounds>, Co
                 }
                 for (t, name) in out_values {
                     variables.insert(name.clone(), VarBounds::new(0, VarScope::Output, *t));
+                }
+            }
+            ASTNodeType::ModuleInstantiation { module, instance } => {
+                let module = modules
+                    .iter()
+                    .filter(|m| &m.name == module)
+                    .next()
+                    // TODO: Make this an error
+                    .expect("Couldn't find module");
+                for (vartype, varname) in module.inputs.iter().chain(module.outputs.iter()) {
+                    variables.insert(
+                        format!("{}.{}", instance, varname),
+                        VarBounds::new(0, VarScope::Local, *vartype),
+                    );
                 }
             }
             ASTNodeType::VariableReference { var_id } => {
@@ -545,7 +562,9 @@ pub fn compile_document(tree: &mut Tree<ASTNode>) -> CompileResult<(Vec<Module>,
         .to_owned();
     let mut modules = vec![];
     for &child in children.iter() {
-        if let Some((module, mut module_vast)) = noncriterr!(result, compile_module(tree, child)) {
+        if let Some((module, mut module_vast)) =
+            noncriterr!(result, compile_module(tree, child, &declarations))
+        {
             println!("Compiled module {}", module.name);
             modules.push(module);
             singleerror!(result, vast.append_tree(v_head, &mut module_vast));
@@ -602,6 +621,7 @@ fn get_module_declarations(tree: &mut Tree<ASTNode>) -> CompileResult<Vec<Module
 pub fn compile_module(
     tree: &mut Tree<ASTNode>,
     head: NodeId,
+    modules: &Vec<ModuleDeclaration>,
 ) -> CompileResult<(Module, Tree<VNode>)> {
     let mut result = CompileResult::new();
 
@@ -609,13 +629,14 @@ pub fn compile_module(
     {
         //Stores pairs of (variable ID, (highest used t-offset, lowest used t-offset))
         //This is needed to create the registers
-        let variables: HashMap<String, VarBounds> = singleerror!(result, get_var_bounds(tree));
+        let variables: HashMap<String, VarBounds> =
+            singleerror!(result, get_var_bounds(tree, modules));
 
         //Before creating the tree, verify it
         logerror!(result, verify(tree, &variables));
     }
 
-    let module = logerror!(result, Module::from_ast(tree, head));
+    let module = logerror!(result, Module::from_ast(tree, head, modules));
 
     //Creating the Verilog AST can now officially begin
 
@@ -654,6 +675,99 @@ pub fn compile_module(
     let clock_edge = v_tree.new_node(VNode::AlwaysBegin {
         trigger: AlwaysBeginTriggerType::Posedge,
     });
+
+    // Instantiate each module instantiation
+    for (instance, module) in module.instantiations.iter() {
+        let module = modules
+            .iter()
+            .filter(|m| &m.name == module)
+            .next()
+            .expect("Couldn't find module");
+
+        let v_instance = v_tree.new_node(VNode::ModuleInstantiation {
+            module: module.name.clone(),
+            instance: instance.to_owned(),
+        });
+
+        for (vartype, portname, varname, declare) in module
+            .inputs
+            .iter()
+            .chain(module.outputs.iter())
+            .map(|(t, n)| (*t, n.to_owned(), format!("{}_{}", instance, n), true))
+            .chain(std::iter::once((
+                Type::Bit,
+                "clk".to_owned(),
+                "clk".to_owned(),
+                false,
+            )))
+            .chain(std::iter::once((
+                Type::Bit,
+                "rst".to_owned(),
+                "rst".to_owned(),
+                false,
+            )))
+        {
+            let v_port = v_tree.new_node(VNode::ModuleInstantiationVariable {
+                portname: portname.to_owned(),
+                variable: varname.clone(),
+            });
+            singleerror!(result, v_tree.append_to(v_instance, v_port));
+
+            if declare {
+                // Also declare that variable as a wire
+                let v_decl = v_tree.new_node(VNode::WireDeclare {
+                    bits: vartype.bit_size(),
+                });
+                let v_varref = v_tree.new_node(VNode::VariableReference {
+                    var_id: varname.clone(),
+                });
+                singleerror!(result, v_tree.append_to(v_decl, v_varref));
+                singleerror!(result, v_tree.append_to(v_head, v_decl));
+
+                // And assign it appropriately
+                let is_input = module
+                    .inputs
+                    .iter()
+                    .filter(|(_, n)| n == &portname)
+                    .next()
+                    .is_some();
+                if is_input {
+                    let v_assign = v_tree.new_node(VNode::AssignKeyword {});
+                    let lhs = v_tree.new_node(VNode::VariableReference {
+                        var_id: varname.clone(),
+                    });
+                    let rhs = v_tree.new_node(VNode::VariableReference {
+                        var_id: variable_name_relative(&varname, 0),
+                    });
+                    singleerror!(result, v_tree.append_to(v_assign, lhs));
+                    singleerror!(result, v_tree.append_to(v_assign, rhs));
+                    singleerror!(result, v_tree.append_to(v_head, v_assign));
+                } else {
+                    let v_decl = v_tree.new_node(VNode::WireDeclare {
+                        bits: vartype.bit_size(),
+                    });
+                    let v_varref = v_tree.new_node(VNode::VariableReference {
+                        var_id: variable_name_relative(&varname, 0),
+                    });
+                    singleerror!(result, v_tree.append_to(v_decl, v_varref));
+                    singleerror!(result, v_tree.append_to(v_head, v_decl));
+
+                    let v_assign = v_tree.new_node(VNode::AssignKeyword {});
+                    let lhs = v_tree.new_node(VNode::VariableReference {
+                        var_id: variable_name_relative(&varname, 0),
+                    });
+                    let rhs = v_tree.new_node(VNode::VariableReference {
+                        var_id: varname.clone(),
+                    });
+                    singleerror!(result, v_tree.append_to(v_assign, lhs));
+                    singleerror!(result, v_tree.append_to(v_assign, rhs));
+                    singleerror!(result, v_tree.append_to(v_head, v_assign));
+                }
+            }
+        }
+
+        singleerror!(result, v_tree.append_to(v_head, v_instance));
+    }
 
     //Register chain creation for each variable
     for (name, vartype) in module.variables.clone().iter() {
@@ -825,7 +939,7 @@ pub fn compile_module(
 
         // Declare it (`wire x_next;`)
         let var_node = VNode::VariableReference {
-            var_id: format!("{}_next", (*var_id).to_owned()),
+            var_id: variable_name_relative(var_id, 1),
         };
         let reg_head = v_tree.new_node(var_node);
 
@@ -895,7 +1009,7 @@ pub fn compile_module(
                 })
             } else {
                 v_tree.new_node(VNode::VariableReference {
-                    var_id: format!("{}_next", var_id),
+                    var_id: variable_name_relative(var_id, 1),
                 })
             }
         };
@@ -1117,6 +1231,7 @@ fn variable_name(
 }
 
 fn variable_name_relative(var_id: &str, index: i64) -> String {
+    let var_id = var_id.to_owned().replace(".", "_");
     if index == 1 {
         format!("{}_next", var_id)
     } else {

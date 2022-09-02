@@ -374,6 +374,12 @@ impl Block {
                     }
                     // Otherwise, we purposefully ignore this
                 }
+                ASTNodeType::ModuleInstantiation { module, instance } => {
+                    if !declaration_allowed {
+                        panic!("Module instantiation not allowed in this context");
+                    }
+                    // Otherwise, we purposefully ignore this
+                }
                 _ => {
                     panic!(
                         "Unexpected node {:?}",
@@ -543,13 +549,18 @@ pub struct Module {
     pub name: String,
     pub inputs: Vec<String>,
     pub outputs: Vec<String>,
+    pub instantiations: HashMap<String, String>,
     pub variables: HashMap<String, Type>,
     pub reset_values: HashMap<String, NumberLiteral>,
     pub block: Block,
 }
 
 impl Module {
-    pub fn from_ast(ast: &Tree<ASTNode>, head: NodeId) -> CompileResult<Self> {
+    pub fn from_ast(
+        ast: &Tree<ASTNode>,
+        head: NodeId,
+        modules: &Vec<ModuleDeclaration>,
+    ) -> CompileResult<Self> {
         let mut result = CompileResult::new();
 
         let (id, in_values, out_values) = match &ast[head].data.node_type {
@@ -562,6 +573,22 @@ impl Module {
                 panic!("Tried to compile module which wasn't of type Node::ModuleDeclaration");
             }
         };
+
+        // Get all the module instantiations
+        let instantiations: HashMap<String, String> = ast
+            .get_node(head)
+            .unwrap()
+            .children
+            .as_ref()
+            .unwrap()
+            .iter()
+            .flat_map(|n| match &ast.get_node(*n).unwrap().data.node_type {
+                ASTNodeType::ModuleInstantiation { module, instance } => {
+                    Some((instance.to_owned(), module.to_owned()))
+                }
+                _ => None,
+            })
+            .collect();
 
         // Grab all the variable declarations
         let variables: HashMap<_, _> = ast
@@ -579,6 +606,18 @@ impl Module {
             })
             .chain(in_values.iter().map(|(a, b)| (b.to_string(), *a)))
             .chain(out_values.iter().map(|(a, b)| (b.to_string(), *a)))
+            .chain(instantiations.iter().flat_map(|(instance, module)| {
+                let module = match modules.iter().filter(|m| &m.name == module).next() {
+                    Some(m) => m,
+                    None => panic!("Could not find module declaration {}", module),
+                };
+                let mut module_variables = vec![];
+                for (var_type, var_name) in module.inputs.iter().chain(module.outputs.iter()) {
+                    module_variables
+                        .push((format!("{}.{}", instance, var_name), var_type.to_owned()));
+                }
+                module_variables
+            }))
             .collect();
 
         // Grab all the reset values
@@ -637,6 +676,7 @@ impl Module {
                 .iter()
                 .map(|(_, name)| name.to_string())
                 .collect(),
+            instantiations,
             variables,
             reset_values,
             block,
