@@ -1,0 +1,19 @@
+### CODE
+
+module shifter(bits<4> a) -> (bits<4> b) {
+    b[t] = a[t][2:0] ++ 1'd0;
+}
+
+module instantiation(bits<4> a) -> (bits<4> b) {
+    instantiate shifter as my_shifter;
+    my_shifter.a[t] = a[t];
+    b[t] = my_shifter.b[t];
+}
+
+### DATA
+rst,a in 4,b out 4
+1,0,x
+0,1,2
+0,2,4
+0,3,6
+0,12,8
