@@ -29,8 +29,8 @@ struct SimulationInstance {
 #[pymethods]
 impl SimulationInstance {
     #[new]
-    fn new(path: String) -> Self {
-        let module = crate::simulation::Module::new(std::path::PathBuf::from(path)).unwrap();
+    fn new(path: String, top: String) -> Self {
+        let module = crate::simulation::Module::new(std::path::PathBuf::from(path), &top).unwrap();
         Self {
             instance: Some(module.instantiate()),
         }

@@ -18,7 +18,7 @@ pub struct Module {
 }
 
 impl Module {
-    pub fn new(input: std::path::PathBuf) -> Option<Self> {
+    pub fn new(input: std::path::PathBuf, top: &str) -> Option<Self> {
         let inputpath = input.clone();
         println!("Compiling {:?}", input);
 
@@ -42,10 +42,11 @@ impl Module {
         }
         let (mut modules, v_a) = result.result.unwrap();
 
-        if modules.len() != 1 {
-            todo!("Currently can't simulate >1 module, b/c we don't know the top");
-        }
-        let module = modules.drain(..).next().unwrap();
+        let module = modules
+            .drain(..)
+            .filter(|m| m.name == top)
+            .next()
+            .expect("Couldn't find module");
 
         println!("Bare tree:\n\n{}\n\n", v_a);
 
@@ -95,8 +96,16 @@ impl Module {
             })
             .collect();
 
-        let input_size = inputs[inputs.len() - 1].2.high + 1;
-        let output_size = outputs[outputs.len() - 1].2.high + 1;
+        let input_size = if inputs.len() == 0 {
+            0
+        } else {
+            inputs[inputs.len() - 1].2.high + 1
+        };
+        let output_size = if outputs.len() == 0 {
+            0
+        } else {
+            outputs[outputs.len() - 1].2.high + 1
+        };
 
         let input_size = if input_size == 0 {
             32

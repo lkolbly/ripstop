@@ -43,6 +43,9 @@ enum Commands {
     Simulate {
         #[clap(value_parser)]
         input: std::path::PathBuf,
+
+        #[clap(value_parser)]
+        top: String,
     },
 }
 
@@ -104,8 +107,8 @@ fn main() {
         Commands::Build { input, output } => {
             std::process::exit(compile(input, output));
         }
-        Commands::Simulate { input } => {
-            let m = crate::simulation::Module::new(input).unwrap();
+        Commands::Simulate { input, top } => {
+            let m = crate::simulation::Module::new(input, &top).unwrap();
             let mut instance = m.instantiate();
 
             instance.reset_step(crate::simulation::Values(HashMap::from([
