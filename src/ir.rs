@@ -551,7 +551,7 @@ pub struct Module {
     pub outputs: Vec<String>,
     pub instantiations: HashMap<String, String>,
     pub variables: HashMap<String, Type>,
-    pub reset_values: HashMap<String, NumberLiteral>,
+    pub reset_values: HashMap<String, (NumberLiteral, i64)>,
     pub block: Block,
 }
 
@@ -637,10 +637,16 @@ impl Module {
                             || lhs.time == TimeReference::Absolute(-1)
                         {
                             // This is a reset value
+                            let timeval = match lhs.time {
+                                TimeReference::Absolute(n) => n,
+                                _ => unreachable!(),
+                            };
                             let rhs =
                                 Expression::from_ast(ast, ast.get_child_node(*n, 1).unwrap().id);
                             match *rhs {
-                                Expression::NumberLiteral(literal) => Some((lhs.variable, literal)),
+                                Expression::NumberLiteral(literal) => {
+                                    Some((lhs.variable, (literal, timeval)))
+                                }
                                 _ => {
                                     result.error(CompileError::InvalidResetValue {
                                         context: ast

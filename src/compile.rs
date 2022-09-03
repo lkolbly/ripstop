@@ -886,7 +886,7 @@ pub fn compile_module(
 
             let reset_value = module.reset_values.get(name);
 
-            let mut rhs = if let Some(reset_value) = reset_value {
+            let mut rhs = if let Some((reset_value, _)) = reset_value {
                 let mut conditional_tree = Tree::new();
                 let conditional = conditional_tree.new_node(VNode::Ternary {});
                 let rst_ref = conditional_tree.new_node(VNode::VariableReference {
@@ -931,6 +931,24 @@ pub fn compile_module(
         }
     }
 
+    // Check that all reset values are correct w.r.t. combinatorialness
+    for (var_id, rhs) in module.block.assignments.iter() {
+        if let Some((_, timeval)) = module.reset_values.get(var_id) {
+            if rhs.is_combinatorial() && *timeval != -1 {
+                panic!(
+                    "Reset value at timestamp 0 is not permitted for combinatorial variable {}",
+                    var_id
+                );
+            }
+            if !rhs.is_combinatorial() && *timeval != 0 {
+                panic!(
+                    "Reset value at timestamp -1 is not permitted for combinatorial variable {}",
+                    var_id
+                );
+            }
+        }
+    }
+
     // Register all the non-combinatorial variables
     for (var_id, rhs) in module.block.assignments.iter() {
         if rhs.is_combinatorial() {
@@ -956,7 +974,7 @@ pub fn compile_module(
 
         let reset_value = module.reset_values.get(var_id);
 
-        let mut rhs = if let Some(reset_value) = reset_value {
+        let mut rhs = if let Some((reset_value, _)) = reset_value {
             let mut conditional_tree = Tree::new();
             let conditional = conditional_tree.new_node(VNode::Ternary {});
             let rst_ref = conditional_tree.new_node(VNode::VariableReference {
