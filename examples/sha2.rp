@@ -1,0 +1,261 @@
+module round_table(bits<8> round) -> (bits<32> k) {
+    if round[t] == 8'd0 { k[t] = 32'd1116352408; }
+    else if round[t] == 8'd1 { k[t] = 32'd1899447441; }
+    else if round[t] == 8'd2 { k[t] = 32'd3049323471; }
+    else if round[t] == 8'd3 { k[t] = 32'd3921009573; }
+    else if round[t] == 8'd4 { k[t] = 32'd961987163; }
+    else if round[t] == 8'd5 { k[t] = 32'd1508970993; }
+    else if round[t] == 8'd6 { k[t] = 32'd2453635748; }
+    else if round[t] == 8'd7 { k[t] = 32'd2870763221; }
+    else if round[t] == 8'd8 { k[t] = 32'd3624381080; }
+    else if round[t] == 8'd9 { k[t] = 32'd310598401; }
+    else if round[t] == 8'd10 { k[t] = 32'd607225278; }
+    else if round[t] == 8'd11 { k[t] = 32'd1426881987; }
+    else if round[t] == 8'd12 { k[t] = 32'd1925078388; }
+    else if round[t] == 8'd13 { k[t] = 32'd2162078206; }
+    else if round[t] == 8'd14 { k[t] = 32'd2614888103; }
+    else if round[t] == 8'd15 { k[t] = 32'd3248222580; }
+    else if round[t] == 8'd16 { k[t] = 32'd3835390401; }
+    else if round[t] == 8'd17 { k[t] = 32'd4022224774; }
+    else if round[t] == 8'd18 { k[t] = 32'd264347078; }
+    else if round[t] == 8'd19 { k[t] = 32'd604807628; }
+    else if round[t] == 8'd20 { k[t] = 32'd770255983; }
+    else if round[t] == 8'd21 { k[t] = 32'd1249150122; }
+    else if round[t] == 8'd22 { k[t] = 32'd1555081692; }
+    else if round[t] == 8'd23 { k[t] = 32'd1996064986; }
+    else if round[t] == 8'd24 { k[t] = 32'd2554220882; }
+    else if round[t] == 8'd25 { k[t] = 32'd2821834349; }
+    else if round[t] == 8'd26 { k[t] = 32'd2952996808; }
+    else if round[t] == 8'd27 { k[t] = 32'd3210313671; }
+    else if round[t] == 8'd28 { k[t] = 32'd3336571891; }
+    else if round[t] == 8'd29 { k[t] = 32'd3584528711; }
+    else if round[t] == 8'd30 { k[t] = 32'd113926993; }
+    else if round[t] == 8'd31 { k[t] = 32'd338241895; }
+    else if round[t] == 8'd32 { k[t] = 32'd666307205; }
+    else if round[t] == 8'd33 { k[t] = 32'd773529912; }
+    else if round[t] == 8'd34 { k[t] = 32'd1294757372; }
+    else if round[t] == 8'd35 { k[t] = 32'd1396182291; }
+    else if round[t] == 8'd36 { k[t] = 32'd1695183700; }
+    else if round[t] == 8'd37 { k[t] = 32'd1986661051; }
+    else if round[t] == 8'd38 { k[t] = 32'd2177026350; }
+    else if round[t] == 8'd39 { k[t] = 32'd2456956037; }
+    else if round[t] == 8'd40 { k[t] = 32'd2730485921; }
+    else if round[t] == 8'd41 { k[t] = 32'd2820302411; }
+    else if round[t] == 8'd42 { k[t] = 32'd3259730800; }
+    else if round[t] == 8'd43 { k[t] = 32'd3345764771; }
+    else if round[t] == 8'd44 { k[t] = 32'd3516065817; }
+    else if round[t] == 8'd45 { k[t] = 32'd3600352804; }
+    else if round[t] == 8'd46 { k[t] = 32'd4094571909; }
+    else if round[t] == 8'd47 { k[t] = 32'd275423344; }
+    else if round[t] == 8'd48 { k[t] = 32'd430227734; }
+    else if round[t] == 8'd49 { k[t] = 32'd506948616; }
+    else if round[t] == 8'd50 { k[t] = 32'd659060556; }
+    else if round[t] == 8'd51 { k[t] = 32'd883997877; }
+    else if round[t] == 8'd52 { k[t] = 32'd958139571; }
+    else if round[t] == 8'd53 { k[t] = 32'd1322822218; }
+    else if round[t] == 8'd54 { k[t] = 32'd1537002063; }
+    else if round[t] == 8'd55 { k[t] = 32'd1747873779; }
+    else if round[t] == 8'd56 { k[t] = 32'd1955562222; }
+    else if round[t] == 8'd57 { k[t] = 32'd2024104815; }
+    else if round[t] == 8'd58 { k[t] = 32'd2227730452; }
+    else if round[t] == 8'd59 { k[t] = 32'd2361852424; }
+    else if round[t] == 8'd60 { k[t] = 32'd2428436474; }
+    else if round[t] == 8'd61 { k[t] = 32'd2756734187; }
+    else if round[t] == 8'd62 { k[t] = 32'd3204031479; }
+    else if round[t] == 8'd63 { k[t] = 32'd3329325298; }
+}
+
+
+// Performs a single step of the extension operation
+// The previous 16 words (512 bits) are kept as a shift register
+module sha2_extend(
+    bits<512> w_in
+) -> (
+    bits<512> w_out
+) {
+    bits<32> s0;
+    bits<32> s1;
+    bits<32> w7;
+    bits<32> w15;
+    bits<32> w2;
+    bits<32> w16;
+
+    w16[t] = w_in[t-1][511:480];
+    w15[t] = w_in[t-1][479:448];
+    w7[t] = w_in[t-1][223:192];
+    w2[t] = w_in[t-1][63:32];
+
+    bits<32> new_w;
+
+    s0[t] = (w15[t][6:0] ++ w15[t][31:7]) ^ (w15[t][17:0] ++ w15[t][31:18]) ^ (3'd0 ++ w15[t][31:3]);
+    s1[t] = (w2[t][16:0] ++ w2[t][31:17]) ^ (w2[t][18:0] ++ w2[t][31:19]) ^ (10'd0 ++ w2[t][31:10]);
+    new_w[t] = w16[t] + s0[t] + w7[t] + s1[t];
+
+    w_out[t] = w_in[t-1][479:0] ++ new_w[t];
+}
+
+
+// Performs a single compression round of the SHA function
+// Has a single cycle of delay
+module sha2_round(
+    bits<32> a_in,
+    bits<32> b_in,
+    bits<32> c_in,
+    bits<32> d_in,
+    bits<32> e_in,
+    bits<32> f_in,
+    bits<32> g_in,
+    bits<32> h_in,
+    bits<32> k,
+    bits<32> w
+) -> (
+    bits<32> a_out,
+    bits<32> b_out,
+    bits<32> c_out,
+    bits<32> d_out,
+    bits<32> e_out,
+    bits<32> f_out,
+    bits<32> g_out,
+    bits<32> h_out
+) {
+    bits<32> temp1;
+    bits<32> temp2;
+    bits<32> s1;
+    bits<32> s0;
+    bits<32> maj;
+    bits<32> ch;
+
+    s1[t] = (e_in[t-1][5:0] ++ e_in[t-1][31:6]) ^ (e_in[t-1][10:0] ++ e_in[t-1][31:11]) ^ (e_in[t-1][24:0] ++ e_in[t-1][31:25]);
+    ch[t] = (e_in[t-1] & f_in[t-1]) ^ ((~e_in[t-1]) & g_in[t-1]);
+
+    s0[t] = (a_in[t-1][1:0] ++ a_in[t-1][31:2]) ^ (a_in[t-1][12:0] ++ a_in[t-1][31:13]) ^ (a_in[t-1][21:0] ++ a_in[t-1][31:22]);
+    maj[t] = (a_in[t-1] & b_in[t-1]) ^ (a_in[t-1] & c_in[t-1]) ^ (b_in[t-1] & c_in[t-1]);
+
+    temp1[t] = h_in[t-1] + s1[t] + ch[t] + k[t-1] + w[t-1];
+    temp2[t] = s0[t] + maj[t];
+
+    h_out[t] = g_in[t-1];
+    g_out[t] = f_in[t-1];
+    f_out[t] = e_in[t-1];
+    e_out[t] = d_in[t-1] + temp1[t];
+    d_out[t] = c_in[t-1];
+    c_out[t] = b_in[t-1];
+    b_out[t] = a_in[t-1];
+    a_out[t] = temp1[t] + temp2[t];
+}
+
+
+module process_chunk(
+    bits<256> hash_in,
+    bit chunk_valid,
+    bits<512> chunk_in
+) -> (
+    bit hash_valid,
+    bits<256> hash_out
+) {
+    bits<8> round;
+    bit hash_pending;
+    bits<512> chunk;
+    round[0] = 8'd0;
+    hash_pending[0] = 1'd0;
+
+    instantiate sha2_round as rndfn;
+
+    rndfn.a_in[t] = hash_out[t][31:0];
+    rndfn.b_in[t] = hash_out[t][63:32];
+    rndfn.c_in[t] = hash_out[t][95:64];
+    rndfn.d_in[t] = hash_out[t][127:96];
+    rndfn.e_in[t] = hash_out[t][159:128];
+    rndfn.f_in[t] = hash_out[t][191:160];
+    rndfn.g_in[t] = hash_out[t][223:192];
+    rndfn.h_in[t] = hash_out[t][255:224];
+    rndfn.w[t] = chunk[t-1][511:480];
+
+    instantiate round_table as round_table;
+    if round[t] != 8'd0 {
+        round_table.round[t] = 8'd64 - round[t];
+    } else {
+        round_table.round[t] = 8'd0;
+    }
+    rndfn.k[t] = round_table.k[t-1];
+
+    instantiate sha2_extend as extfn;
+    extfn.w_in[t] = chunk[t];
+
+    if round[t-1] == 8'd0 {
+        if hash_pending[t-1] {
+            hash_valid[t] = 1'd1;
+            hash_pending[t] = 1'd0;
+            hash_out[t] = rndfn.h_out[t] ++ rndfn.g_out[t] ++ rndfn.f_out[t] ++ rndfn.e_out[t] ++ rndfn.d_out[t] ++ rndfn.c_out[t] ++ rndfn.b_out[t] ++ rndfn.a_out[t];
+        } else {
+            hash_valid[t] = 1'd0;
+            if chunk_valid[t-1] {
+                hash_out[t] = hash_in[t];
+                chunk[t] = chunk_in[t];
+                round[t] = 8'd64;
+                hash_pending[t] = 1'd1;
+            }
+        }
+    } else if round[t-1] == 8'd64 {
+        // Wait a cycle for the message extension pipeline to fill
+        chunk[t] = extfn.w_out[t];
+        round[t] = round[t-1] - 8'd1;
+    } else {
+        chunk[t] = extfn.w_out[t];
+        round[t] = round[t-1] - 8'd1;
+        hash_out[t] = rndfn.h_out[t] ++ rndfn.g_out[t] ++ rndfn.f_out[t] ++ rndfn.e_out[t] ++ rndfn.d_out[t] ++ rndfn.c_out[t] ++ rndfn.b_out[t] ++ rndfn.a_out[t];
+    }
+}
+
+
+module hash_bytes(bit data_in_valid, bits<8> data_in, bit reset_hash) -> (bits<8> digest_out, bit digest_out_valid) {
+    bits<512> chunk_to_hash;
+    bits<256> hash;
+    bits<8> bytes_left_to_hash;
+    bytes_left_to_hash[0] = 8'd64;
+
+    bits<8> bytes_to_output;
+    bits<256> hash_out;
+
+    bytes_to_output[0] = 8'd0;
+
+    instantiate process_chunk as hasher;
+
+    if bytes_left_to_hash[t-1] == 8'd0 {
+        hasher.hash_in[t] = hash[t-1];
+        hasher.chunk_valid[t] = 1'd1;
+        hasher.chunk_in[t] = chunk_to_hash[t-1];
+        bytes_left_to_hash[t] = 8'd64;
+    } else if data_in_valid[t-1] {
+        bytes_left_to_hash[t] = bytes_left_to_hash[t-1] - 8'd1;
+        chunk_to_hash[t] = chunk_to_hash[t-1][503:0] ++ data_in[t-1];
+    } else {
+        hasher.chunk_valid[t] = 1'd0;
+    }
+
+    if reset_hash[t-1] {
+        hash[t] = 32'h5be0cd19 ++ 32'h1f83d9ab ++ 32'h9b05688c ++ 32'h510e527f ++ 32'ha54ff53a ++ 32'h3c6ef372 ++ 32'hbb67ae85 ++ 32'h6a09e667;
+        digest_out_valid[t] = 1'd0;
+    } else if hasher.hash_valid[t-1] {
+        hash[t] =
+            (hash[t-1][255:224] + hasher.hash_out[t-1][255:224]) ++
+            (hash[t-1][223:192] + hasher.hash_out[t-1][223:192]) ++
+            (hash[t-1][191:160] + hasher.hash_out[t-1][191:160]) ++
+            (hash[t-1][159:128] + hasher.hash_out[t-1][159:128]) ++
+            (hash[t-1][127: 96] + hasher.hash_out[t-1][127: 96]) ++
+            (hash[t-1][ 95: 64] + hasher.hash_out[t-1][ 95: 64]) ++
+            (hash[t-1][ 63: 32] + hasher.hash_out[t-1][ 63: 32]) ++
+            (hash[t-1][ 31:  0] + hasher.hash_out[t-1][ 31:  0]);
+
+        hash_out[t] = hash[t];
+        bytes_to_output[t] = 8'd32;
+        digest_out_valid[t] = 1'd0;
+    } else if bytes_to_output[t-1] > 8'd0 {
+        digest_out[t] = hash_out[t-1][7:0];
+        hash_out[t] = 8'd0 ++ hash_out[t-1][255:8];
+        bytes_to_output[t] = bytes_to_output[t-1] - 8'd1;
+        digest_out_valid[t] = 1'd1;
+    } else {
+        digest_out_valid[t] = 1'd0;
+    }
+}
