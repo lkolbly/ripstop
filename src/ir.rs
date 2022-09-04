@@ -451,6 +451,9 @@ impl Block {
                         ast.get_node(*child).unwrap().children.as_ref().unwrap(),
                     );
                     for (k, v) in new_assignments.drain() {
+                        if assignments.contains_key(&k) {
+                            panic!("Can't assign variable multiple times!");
+                        }
                         assignments.insert(k, v);
                     }
                 }
@@ -686,7 +689,8 @@ impl Module {
         };
 
         // Get all the module instantiations
-        let instantiations: HashMap<String, String> = ast
+        let mut instantiations = HashMap::new();
+        for (instance, module) in ast
             .get_node(head)
             .unwrap()
             .children
@@ -699,7 +703,15 @@ impl Module {
                 }
                 _ => None,
             })
-            .collect();
+        {
+            if instantiations.contains_key(&instance) {
+                panic!(
+                    "Cannot have multiple instantiations with name {}!",
+                    instance
+                );
+            }
+            instantiations.insert(instance, module);
+        }
 
         // Grab all the variable declarations
         let variables: HashMap<_, _> = ast
