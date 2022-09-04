@@ -56,6 +56,11 @@ pub enum CompileError {
     VariableNotAssigned {
         var_name: String,
     },
+
+    MultipleAssignment {
+        var_name: String,
+        context: StringContext,
+    },
 }
 
 impl From<TreeError> for CompileError {
@@ -98,6 +103,7 @@ impl std::fmt::Debug for CompileError {
             CompileError::CannotIndexType { context, invalid_type } => include_position(context, &format!("Cannot index type {}", invalid_type)),
             CompileError::InvalidResetValue { context } => include_position(context, &format!("Invalid reset value")),
             CompileError::VariableNotAssigned { var_name } => write!(f, "Variable '{}' not assigned", var_name),
+            CompileError::MultipleAssignment { var_name, context } => include_position(context, &format!("Cannot assign to variable {} multiple times", var_name)),
         }
     }
 }

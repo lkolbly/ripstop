@@ -11,7 +11,7 @@ use crate::ast::{ASTNode, ASTNodeType, StringContext, Type};
 use crate::error::{CompileError, CompileResult};
 use crate::parse::{NumberLiteral, Range};
 use crate::tree::{NodeId, Tree};
-use crate::{logerror, noncriterr};
+use crate::{logerror, noncriterr, singleerror};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TimeReference {
@@ -398,9 +398,17 @@ pub struct Block {
 }
 
 impl Block {
-    fn from_ast(ast: &Tree<ASTNode>, children: &[NodeId], declaration_allowed: bool) -> Self {
-        let mut assignments = Self::from_ast_with_offsets(ast, children, declaration_allowed);
-        Self {
+    fn from_ast(
+        ast: &Tree<ASTNode>,
+        children: &[NodeId],
+        declaration_allowed: bool,
+    ) -> CompileResult<Self> {
+        let mut result = CompileResult::new();
+        let mut assignments = logerror!(
+            result,
+            Self::from_ast_with_offsets(ast, children, declaration_allowed)
+        );
+        result.ok(Self {
             assignments: assignments
                 .drain()
                 .map(|(variable, (offset, mut expr))| {
@@ -411,14 +419,16 @@ impl Block {
                     (variable, expr)
                 })
                 .collect(),
-        }
+        });
+        result
     }
 
     fn from_ast_with_offsets(
         ast: &Tree<ASTNode>,
         children: &[NodeId],
         declaration_allowed: bool,
-    ) -> HashMap<String, (i64, Box<Expression>)> {
+    ) -> CompileResult<HashMap<String, (i64, Box<Expression>)>> {
+        let mut result = CompileResult::new();
         let mut assignments = HashMap::new();
         for child in children.iter() {
             match &ast.get_node(*child).unwrap().data.node_type {
@@ -439,20 +449,31 @@ impl Block {
                                 ast.get_child_node(*child, 1).unwrap().id,
                             );
                             if assignments.contains_key(&lhs.variable) {
-                                panic!("Can't assign variable multiple times!");
+                                result.error(CompileError::MultipleAssignment {
+                                    var_name: lhs.variable.to_owned(),
+                                    context: ast.get_node(*child).unwrap().data.context.clone(),
+                                });
+                                return result;
                             }
                             assignments.insert(lhs.variable, (offset, rhs));
                         }
                     }
                 }
                 ASTNodeType::Conditional => {
-                    let mut new_assignments = Self::from_conditional_children(
-                        ast,
-                        ast.get_node(*child).unwrap().children.as_ref().unwrap(),
+                    let mut new_assignments = logerror!(
+                        result,
+                        Self::from_conditional_children(
+                            ast,
+                            ast.get_node(*child).unwrap().children.as_ref().unwrap(),
+                        )
                     );
                     for (k, v) in new_assignments.drain() {
                         if assignments.contains_key(&k) {
-                            panic!("Can't assign variable multiple times!");
+                            result.error(CompileError::MultipleAssignment {
+                                var_name: k,
+                                context: ast.get_node(*child).unwrap().data.context.clone(),
+                            });
+                            return result;
                         }
                         assignments.insert(k, v);
                     }
@@ -477,7 +498,8 @@ impl Block {
                 }
             }
         }
-        assignments
+        result.ok(assignments);
+        result
     }
 
     /// Constructs a block from the children of a conditional node
@@ -486,37 +508,48 @@ impl Block {
     fn from_conditional_children(
         ast: &Tree<ASTNode>,
         children: &[NodeId],
-    ) -> HashMap<String, (i64, Box<Expression>)> {
+    ) -> CompileResult<HashMap<String, (i64, Box<Expression>)>> {
+        let mut result = CompileResult::new();
         if children.len() == 0 {
             // This must be after a else-if case, but with no following else.
-            return HashMap::new();
+            result.ok(HashMap::new());
+            return result;
         }
-        match &ast.get_node(children[0]).unwrap().data.node_type {
+        let okres = match &ast.get_node(children[0]).unwrap().data.node_type {
             ASTNodeType::Block => {
                 // This is an unconditional else
-                Block::from_ast_with_offsets(
-                    ast,
-                    ast.get_node(children[0])
-                        .unwrap()
-                        .children
-                        .as_ref()
-                        .unwrap_or(&vec![]),
-                    false,
+                logerror!(
+                    result,
+                    Block::from_ast_with_offsets(
+                        ast,
+                        ast.get_node(children[0])
+                            .unwrap()
+                            .children
+                            .as_ref()
+                            .unwrap_or(&vec![]),
+                        false,
+                    )
                 )
             }
             _ => {
                 // This is the condition for the next branch
                 let condition = Expression::from_ast(ast, children[0]);
-                let mut iftrue = Block::from_ast_with_offsets(
-                    ast,
-                    ast.get_node(children[1])
-                        .unwrap()
-                        .children
-                        .as_ref()
-                        .unwrap(),
-                    false,
+                let mut iftrue = logerror!(
+                    result,
+                    Block::from_ast_with_offsets(
+                        ast,
+                        ast.get_node(children[1])
+                            .unwrap()
+                            .children
+                            .as_ref()
+                            .unwrap(),
+                        false,
+                    )
                 );
-                let mut iffalse = Block::from_conditional_children(ast, &children[2..]);
+                let mut iffalse = logerror!(
+                    result,
+                    Block::from_conditional_children(ast, &children[2..])
+                );
 
                 //let mut assignments = iftrue.assignments;
                 let mut assignments = HashMap::new();
@@ -612,7 +645,9 @@ impl Block {
 
                 assignments
             }
-        }
+        };
+        result.ok(okres);
+        result
     }
 
     pub fn variable_reference_range(&self, varname: &str) -> std::ops::Range<i64> {
@@ -792,10 +827,13 @@ impl Module {
             .collect();
 
         // Now build the assigns themselves
-        let block = Block::from_ast(
-            ast,
-            ast.get_node(head).unwrap().children.as_ref().unwrap(),
-            true,
+        let block = logerror!(
+            result,
+            Block::from_ast(
+                ast,
+                ast.get_node(head).unwrap().children.as_ref().unwrap(),
+                true,
+            )
         );
 
         // Type-check everything
