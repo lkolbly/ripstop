@@ -1,0 +1,19 @@
+### CODE
+
+module empty_block(bit selector, bits<4> a, bits<4> b) -> (bits<4> c) {
+    if selector[t] {
+        c[t] = b[t];
+    } else {
+        // This is an empty block!
+    }
+}
+
+### DATA
+rst,selector in 1,a in 4,b in 4,c out 4
+1,0,0,0,x
+1,0,0,0,x
+0,1,1,2,2
+0,0,1,2,2
+0,0,3,4,2
+0,1,5,6,6
+0,1,7,8,8

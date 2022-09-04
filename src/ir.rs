@@ -500,7 +500,7 @@ impl Block {
                         .unwrap()
                         .children
                         .as_ref()
-                        .unwrap(),
+                        .unwrap_or(&vec![]),
                     false,
                 )
             }
