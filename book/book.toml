@@ -4,3 +4,13 @@ language = "en"
 multilingual = false
 src = "src"
 title = "Ripstop HDL"
+
+[preprocessor]
+
+[preprocessor.wavedrom]
+command = "mdbook-wavedrom"
+
+[output]
+
+[output.html]
+additional-js = ["wavedrom.min.js", "wavedrome-default.js"]
