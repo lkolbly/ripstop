@@ -7,10 +7,11 @@ use std::collections::HashMap;
 
 use pest::prec_climber::Operator;
 
-use crate::ast::{ASTNode, ASTNodeType, Type};
+use crate::ast::{ASTNode, ASTNodeType, StringContext, Type};
 use crate::error::{CompileError, CompileResult};
 use crate::parse::{NumberLiteral, Range};
 use crate::tree::{NodeId, Tree};
+use crate::{logerror, noncriterr};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TimeReference {
@@ -93,7 +94,7 @@ impl VariableReference {
 }
 
 #[derive(Debug, Clone)]
-pub enum Expression {
+pub enum LogicalExpression {
     UnaryOperation {
         operation: UnaryOperator,
         operatee: Box<Expression>,
@@ -116,43 +117,52 @@ pub enum Expression {
     NumberLiteral(NumberLiteral),
 }
 
+#[derive(Debug, Clone)]
+pub struct Expression {
+    pub expr: LogicalExpression,
+    pub context: StringContext,
+}
+
 impl Expression {
-    fn from_ast(ast: &Tree<ASTNode>, node: NodeId) -> Box<Self> {
-        let node = match &ast.get_node(node).unwrap().data.node_type {
-            ASTNodeType::BitwiseInverse => Self::UnaryOperation {
+    fn from_ast(ast: &Tree<ASTNode>, nodeid: NodeId) -> Box<Self> {
+        let node = match &ast.get_node(nodeid).unwrap().data.node_type {
+            ASTNodeType::BitwiseInverse => LogicalExpression::UnaryOperation {
                 operation: UnaryOperator::Negation,
-                operatee: Self::from_ast(ast, ast.get_first_child(node).unwrap().id),
+                operatee: Self::from_ast(ast, ast.get_first_child(nodeid).unwrap().id),
             },
             ASTNodeType::VariableReference { var_id: _ } => {
-                Self::VariableReference(VariableReference::from_ast(ast, node))
+                LogicalExpression::VariableReference(VariableReference::from_ast(ast, nodeid))
             }
-            ASTNodeType::NumberLiteral(literal) => Expression::NumberLiteral(*literal),
-            ASTNodeType::Index { high, low } => Expression::UnaryOperation {
+            ASTNodeType::NumberLiteral(literal) => LogicalExpression::NumberLiteral(*literal),
+            ASTNodeType::Index { high, low } => LogicalExpression::UnaryOperation {
                 operation: UnaryOperator::Index(Range {
                     low: *low as u32,
                     high: *high as u32,
                 }),
-                operatee: Self::from_ast(ast, ast.get_first_child(node).unwrap().id),
+                operatee: Self::from_ast(ast, ast.get_first_child(nodeid).unwrap().id),
             },
             nodetype => {
                 if let Some(operator) = BinaryOperator::from_ast(nodetype.clone()) {
-                    Self::BinaryOperation {
+                    LogicalExpression::BinaryOperation {
                         operation: operator,
-                        lhs: Self::from_ast(ast, ast.get_child_node(node, 0).unwrap().id),
-                        rhs: Self::from_ast(ast, ast.get_child_node(node, 1).unwrap().id),
+                        lhs: Self::from_ast(ast, ast.get_child_node(nodeid, 0).unwrap().id),
+                        rhs: Self::from_ast(ast, ast.get_child_node(nodeid, 1).unwrap().id),
                     }
                 } else {
                     todo!();
                 }
             }
         };
-        Box::new(node)
+        Box::new(Self {
+            expr: node,
+            context: ast.get_node(nodeid).unwrap().data.context.clone(),
+        })
     }
 
     /// Shifts the time of this expression by the given amount
     pub fn shift_time(&mut self, offset: i64) {
-        match self {
-            Self::BinaryOperation {
+        match &mut self.expr {
+            LogicalExpression::BinaryOperation {
                 operation: _,
                 lhs,
                 rhs,
@@ -160,13 +170,13 @@ impl Expression {
                 lhs.shift_time(offset);
                 rhs.shift_time(offset);
             }
-            Self::UnaryOperation {
+            LogicalExpression::UnaryOperation {
                 operation: _,
                 operatee,
             } => {
                 operatee.shift_time(offset);
             }
-            Self::Ternary {
+            LogicalExpression::Ternary {
                 condition,
                 lhs,
                 rhs,
@@ -175,7 +185,7 @@ impl Expression {
                 lhs.shift_time(offset);
                 rhs.shift_time(offset);
             }
-            Self::VariableReference(reference) => match &mut reference.time {
+            LogicalExpression::VariableReference(reference) => match &mut reference.time {
                 TimeReference::Absolute(_) => {
                     panic!("Can't shift time of an absolute time (reset value on RHS?)");
                 }
@@ -183,15 +193,14 @@ impl Expression {
                     *varoff += offset;
                 }
             },
-            Self::NumberLiteral(_) => {}
-            _ => unimplemented!(),
+            LogicalExpression::NumberLiteral(_) => {}
         }
     }
 
     /// Finds the oldest reference to the given variable in this expression
     fn get_oldest_reference(&self, variable: &str) -> Option<i64> {
-        match self {
-            Self::BinaryOperation {
+        match &self.expr {
+            LogicalExpression::BinaryOperation {
                 operation: _,
                 lhs,
                 rhs,
@@ -205,11 +214,11 @@ impl Expression {
                     (None, None) => None,
                 }
             }
-            Self::UnaryOperation {
+            LogicalExpression::UnaryOperation {
                 operation: _,
                 operatee,
             } => operatee.get_oldest_reference(variable),
-            Self::Ternary {
+            LogicalExpression::Ternary {
                 condition,
                 lhs,
                 rhs,
@@ -231,7 +240,7 @@ impl Expression {
                     (None, None) => None,
                 }
             }
-            Self::VariableReference(reference) => {
+            LogicalExpression::VariableReference(reference) => {
                 if reference.variable == variable {
                     if let TimeReference::Relative(offset) = reference.time {
                         Some(offset)
@@ -242,7 +251,7 @@ impl Expression {
                     None
                 }
             }
-            Self::NumberLiteral(_) => None,
+            LogicalExpression::NumberLiteral(_) => None,
             _ => {
                 unimplemented!();
             }
@@ -252,57 +261,134 @@ impl Expression {
     /// Determines whether the given expression must be computed combinatorially
     /// (i.e., there exists a variable that is referenced now)
     pub fn is_combinatorial(&self) -> bool {
-        match self {
-            Self::BinaryOperation {
+        match &self.expr {
+            LogicalExpression::BinaryOperation {
                 operation: _,
                 lhs,
                 rhs,
             } => lhs.is_combinatorial() || rhs.is_combinatorial(),
-            Self::UnaryOperation {
+            LogicalExpression::UnaryOperation {
                 operation: _,
                 operatee,
             } => operatee.is_combinatorial(),
-            Self::Ternary {
+            LogicalExpression::Ternary {
                 condition,
                 lhs,
                 rhs,
             } => condition.is_combinatorial() || lhs.is_combinatorial() || rhs.is_combinatorial(),
-            Self::VariableReference(reference) => reference.time == TimeReference::Relative(0),
-            Self::NumberLiteral(_) => false,
-            _ => {
-                unimplemented!("Can't determine whether {:?} is combinatorial", self);
+            LogicalExpression::VariableReference(reference) => {
+                reference.time == TimeReference::Relative(0)
             }
+            LogicalExpression::NumberLiteral(_) => false,
         }
     }
 
     fn depends_on_future(&self) -> bool {
-        match self {
-            Self::BinaryOperation {
+        match &self.expr {
+            LogicalExpression::BinaryOperation {
                 operation: _,
                 lhs,
                 rhs,
             } => lhs.depends_on_future() || rhs.depends_on_future(),
-            Self::UnaryOperation {
+            LogicalExpression::UnaryOperation {
                 operation: _,
                 operatee,
             } => operatee.depends_on_future(),
-            Self::Ternary {
+            LogicalExpression::Ternary {
                 condition,
                 lhs,
                 rhs,
             } => {
                 condition.depends_on_future() || lhs.depends_on_future() || rhs.depends_on_future()
             }
-            Self::VariableReference(VariableReference {
+            LogicalExpression::VariableReference(VariableReference {
                 time: TimeReference::Relative(offset),
                 ..
             }) => *offset > 0,
-            Self::VariableReference(_) => false,
-            Self::NumberLiteral(_) => false,
-            _ => {
-                unimplemented!();
+            LogicalExpression::VariableReference(_) => false,
+            LogicalExpression::NumberLiteral(_) => false,
+        }
+    }
+
+    /// This function both gets the expression's type and performs typechecking
+    pub fn get_type(&self, variables: &HashMap<String, Type>) -> CompileResult<Type> {
+        let mut result = CompileResult::new();
+        match &self.expr {
+            LogicalExpression::BinaryOperation {
+                operation,
+                lhs,
+                rhs,
+            } => {
+                match operation {
+                    BinaryOperator::Addition
+                    | BinaryOperator::Subtraction
+                    | BinaryOperator::BitwiseAnd
+                    | BinaryOperator::BitwiseOr
+                    | BinaryOperator::BitwiseXor
+                    | BinaryOperator::Equal
+                    | BinaryOperator::NotEqual
+                    | BinaryOperator::Greater
+                    | BinaryOperator::GreaterEq
+                    | BinaryOperator::Less
+                    | BinaryOperator::LessEq => {
+                        // Must be the same type
+                    }
+                    BinaryOperator::Concatenate => {
+                        // Type is the sum of the two children types
+                    }
+                }
+            }
+            LogicalExpression::UnaryOperation {
+                operation,
+                operatee,
+            } => {
+                match operation {
+                    UnaryOperator::Negation => {
+                        // Same type
+                    }
+                    UnaryOperator::Index(range) => {
+                        // The subset (...assuming the range is valid for this type)
+                    }
+                }
+            }
+            LogicalExpression::VariableReference(VariableReference { variable, .. }) => {
+                //
+            }
+            LogicalExpression::NumberLiteral(literal) => {
+                let nbits = literal.size_bits;
+            }
+            LogicalExpression::Ternary {
+                condition,
+                lhs,
+                rhs,
+            } => {
+                let condition_type = logerror!(result, condition.get_type(variables));
+                if condition_type.bit_size() != 1 {
+                    result.error(CompileError::MismatchedTypes {
+                        context: condition.context.clone(),
+                        current_type: condition_type,
+                        needed_type: Type::Bit,
+                    });
+                }
+
+                // lhs and rhs must be the same type
+                let lhs_type = logerror!(result, lhs.get_type(variables));
+                let rhs_type = logerror!(result, rhs.get_type(variables));
+                if lhs_type != rhs_type {
+                    // TODO: This really isn't the right way to handle these errors. Type errors should be caught
+                    // at the assignment, inside the block, since the user doesn't see it as a ternary.
+                    result.error(CompileError::MismatchedTypes {
+                        context: condition.context.clone(),
+                        current_type: lhs_type,
+                        needed_type: rhs_type,
+                    });
+                }
+
+                result.ok(lhs_type);
             }
         }
+        todo!();
+        result
     }
 }
 
@@ -446,29 +532,48 @@ impl Block {
                             variable,
                             (
                                 true_offset,
-                                Box::new(Expression::Ternary {
-                                    condition: condition.clone(),
-                                    lhs: iftrue,
-                                    rhs: iffalse,
+                                Box::new(Expression {
+                                    expr: LogicalExpression::Ternary {
+                                        condition: condition.clone(),
+                                        lhs: iftrue,
+                                        rhs: iffalse,
+                                    },
+                                    context: ast
+                                        .get_node(children[0])
+                                        .unwrap()
+                                        .data
+                                        .context
+                                        .clone(),
                                 }),
                             ),
                         );
                     } else {
                         // Build a ternary where the if-true is the previous value
                         let (false_offset, iffalse) = value;
-                        let iftrue = Box::new(Expression::VariableReference(VariableReference {
-                            variable: variable.clone(),
-                            time: TimeReference::Relative(false_offset - 1),
-                        }));
+                        let iftrue = Box::new(Expression {
+                            expr: LogicalExpression::VariableReference(VariableReference {
+                                variable: variable.clone(),
+                                time: TimeReference::Relative(false_offset - 1),
+                            }),
+                            context: ast.get_node(children[0]).unwrap().data.context.clone(),
+                        });
 
                         assignments.insert(
                             variable,
                             (
                                 false_offset,
-                                Box::new(Expression::Ternary {
-                                    condition: condition.clone(),
-                                    lhs: iftrue,
-                                    rhs: iffalse,
+                                Box::new(Expression {
+                                    expr: LogicalExpression::Ternary {
+                                        condition: condition.clone(),
+                                        lhs: iftrue,
+                                        rhs: iffalse,
+                                    },
+                                    context: ast
+                                        .get_node(children[0])
+                                        .unwrap()
+                                        .data
+                                        .context
+                                        .clone(),
                                 }),
                             ),
                         );
@@ -478,19 +583,25 @@ impl Block {
                 // Everything left in iftrue will not be set in the false branch
                 for (variable, value) in iftrue.drain() {
                     let (true_offset, iftrue) = value;
-                    let iffalse = Box::new(Expression::VariableReference(VariableReference {
-                        variable: variable.clone(),
-                        time: TimeReference::Relative(true_offset - 1),
-                    }));
+                    let iffalse = Box::new(Expression {
+                        expr: LogicalExpression::VariableReference(VariableReference {
+                            variable: variable.clone(),
+                            time: TimeReference::Relative(true_offset - 1),
+                        }),
+                        context: ast.get_node(children[0]).unwrap().data.context.clone(),
+                    });
 
                     assignments.insert(
                         variable,
                         (
                             true_offset,
-                            Box::new(Expression::Ternary {
-                                condition: condition.clone(),
-                                lhs: iftrue,
-                                rhs: iffalse,
+                            Box::new(Expression {
+                                expr: LogicalExpression::Ternary {
+                                    condition: condition.clone(),
+                                    lhs: iftrue,
+                                    rhs: iffalse,
+                                },
+                                context: ast.get_node(children[0]).unwrap().data.context.clone(),
                             }),
                         ),
                     );
@@ -643,8 +754,8 @@ impl Module {
                             };
                             let rhs =
                                 Expression::from_ast(ast, ast.get_child_node(*n, 1).unwrap().id);
-                            match *rhs {
-                                Expression::NumberLiteral(literal) => {
+                            match rhs.expr {
+                                LogicalExpression::NumberLiteral(literal) => {
                                     Some((lhs.variable, (literal, timeval)))
                                 }
                                 _ => {
@@ -674,6 +785,17 @@ impl Module {
             ast.get_node(head).unwrap().children.as_ref().unwrap(),
             true,
         );
+
+        // Type-check everything
+        /*for (varname, expr) in block.assignments.iter() {
+            let expr_type = noncriterr!(result, expr.get_type(&variables));
+            let var_type = variables.get(varname).unwrap();
+            if let Some(expr_type) = expr_type {
+                if expr_type.bit_size() != var_type.bit_size() {
+                    // Error!
+                }
+            }
+        }*/
 
         result.ok(Self {
             name: id.to_string(),

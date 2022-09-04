@@ -1,0 +1,12 @@
+### CODE
+
+module mux(bit a, bit b, bit sel) -> (bit c) {
+    if sel[t-1] {
+       c[t] = b[t-1];
+    } else {
+       c[t-1] = a[t-1];
+    }
+}
+
+### OUTPUT
+Should error

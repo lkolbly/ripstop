@@ -23,18 +23,17 @@ struct RipstopParser;
 
 lazy_static! {
     static ref PREC_CLIMBER: PrecClimber<Rule> = PrecClimber::new(vec![
-        Operator::new(Rule::addition, Assoc::Left)
-            | Operator::new(Rule::subtraction, Assoc::Left)
-            | Operator::new(Rule::bitwise_and, Assoc::Left)
-            | Operator::new(Rule::bitwise_xor, Assoc::Left)
-            | Operator::new(Rule::bitwise_or, Assoc::Left)
-            | Operator::new(Rule::equal, Assoc::Left)
+        Operator::new(Rule::equal, Assoc::Left)
             | Operator::new(Rule::notequal, Assoc::Left)
             | Operator::new(Rule::greater, Assoc::Left)
             | Operator::new(Rule::less, Assoc::Left)
             | Operator::new(Rule::greater_eq, Assoc::Left)
-            | Operator::new(Rule::less_eq, Assoc::Left)
-            | Operator::new(Rule::concatenate, Assoc::Left)
+            | Operator::new(Rule::less_eq, Assoc::Left),
+            Operator::new(Rule::bitwise_and, Assoc::Left)
+            | Operator::new(Rule::bitwise_xor, Assoc::Left)
+            | Operator::new(Rule::bitwise_or, Assoc::Left),
+        Operator::new(Rule::addition, Assoc::Left) | Operator::new(Rule::subtraction, Assoc::Left),
+        Operator::new(Rule::concatenate, Assoc::Left),
     ]);
 }
 

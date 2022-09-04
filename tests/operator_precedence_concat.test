@@ -1,0 +1,10 @@
+### CODE
+
+module operator_precedence_concat(bits<4> a, bits<2> b, bits<2> c) -> (bits<4> d) {
+    d[t] = a[t] + b[t] ++ c[t];
+}
+
+### DATA
+rst,a in 4,b in 2,c in 2,d out 8
+1,0,0,0,x
+0,1,2,3,12

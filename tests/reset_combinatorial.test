@@ -1,7 +1,7 @@
 ### CODE
 
 module reset_combinatorial(bit a) -> (bit led) {
-    led[0] = 1'd0;
+    led[-1] = 1'd0;
     led[t] = ~(led[t-1] + a[t]);
 }
 

@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 use crate::{
     ast::{ASTNode, ASTNodeType},
     error::{CompileError, CompileResult},
-    ir::{BinaryOperator, Expression, Module, UnaryOperator},
+    ir::{BinaryOperator, Expression, LogicalExpression, Module, UnaryOperator},
     logerror, noncriterr, singleerror,
     tree::{NodeId, Tree, TreeError},
     verilog_ast::{AlwaysBeginTriggerType, VNode},
@@ -408,8 +408,8 @@ fn compile_ir_expression(
 ) -> Result<Tree<VNode>, CompileError> {
     let mut vast = Tree::new();
 
-    match expr {
-        Expression::BinaryOperation {
+    match &expr.expr {
+        LogicalExpression::BinaryOperation {
             operation,
             lhs,
             rhs,
@@ -428,12 +428,12 @@ fn compile_ir_expression(
                 BinaryOperator::LessEq => VNode::LessEq {},
                 BinaryOperator::Concatenate => VNode::Concatenate {},
             });
-            let mut lhs = compile_ir_expression(state, lhs)?;
-            let mut rhs = compile_ir_expression(state, rhs)?;
+            let mut lhs = compile_ir_expression(state, &lhs)?;
+            let mut rhs = compile_ir_expression(state, &rhs)?;
             vast.append_tree(node, &mut lhs);
             vast.append_tree(node, &mut rhs);
         }
-        Expression::UnaryOperation {
+        LogicalExpression::UnaryOperation {
             operation,
             operatee,
         } => {
@@ -445,7 +445,7 @@ fn compile_ir_expression(
                 // wire[2:0] __ripstop_index_deferral_N;
                 // assign __ripstop_index_deferral_N = (a + b) >> 4;
                 // assign expr_were_evaluating = __ripstop_index_deferral_N;
-                let lhs = compile_ir_expression(state, operatee)?;
+                let lhs = compile_ir_expression(state, &operatee)?;
                 let varname = format!("__ripstop_index_deferral_{}", state.next_internal_var_id);
                 state.next_internal_var_id += 1;
                 state
@@ -465,24 +465,24 @@ fn compile_ir_expression(
                         panic!("Should have been handled in the above case");
                     }
                 });
-                let mut lhs = compile_ir_expression(state, operatee)?;
+                let mut lhs = compile_ir_expression(state, &operatee)?;
                 vast.append_tree(node, &mut lhs)?;
             }
         }
-        Expression::Ternary {
+        LogicalExpression::Ternary {
             condition,
             lhs,
             rhs,
         } => {
-            let mut condition = compile_ir_expression(state, condition)?;
+            let mut condition = compile_ir_expression(state, &condition)?;
             let node = vast.new_node(VNode::Ternary {});
-            let mut lhs = compile_ir_expression(state, lhs)?;
-            let mut rhs = compile_ir_expression(state, rhs)?;
+            let mut lhs = compile_ir_expression(state, &lhs)?;
+            let mut rhs = compile_ir_expression(state, &rhs)?;
             vast.append_tree(node, &mut condition);
             vast.append_tree(node, &mut lhs);
             vast.append_tree(node, &mut rhs);
         }
-        Expression::VariableReference(reference) => {
+        LogicalExpression::VariableReference(reference) => {
             // Get t-offset
             let t_offset = if let crate::ir::TimeReference::Relative(offset) = reference.time {
                 offset
@@ -502,7 +502,7 @@ fn compile_ir_expression(
             let vref = variable_name_relative(&reference.variable, t_offset);
             vast.new_node(VNode::VariableReference { var_id: vref });
         }
-        Expression::NumberLiteral(literal) => {
+        LogicalExpression::NumberLiteral(literal) => {
             vast.new_node(VNode::NumberLiteral { literal: *literal });
         }
         _ => {

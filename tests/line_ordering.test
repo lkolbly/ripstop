@@ -2,7 +2,7 @@
 
 module line_ordering(bits<4> c) -> (bits<4> a) {
     bits<4> b;
-    a[0] = 4'd0;
+    a[-1] = 4'd0;
 
     a[t] = ~b[t];
     b[t] = a[t-1] + c[t];

@@ -189,7 +189,9 @@ impl Values {
                 .filter(|(name, _, _)| name == k)
                 .next()
                 .expect("Couldn't find input");
-            let mask = (1 << (r.high - r.low + 1)) - 1;
+            // TODO: Check that the mask never exceeds 32 bits
+            // (found a bug with ddr_tester, which had a field going from 14 to 45)
+            let mask = ((1u64 << (r.high as u64 - r.low as u64 + 1u64)) - 1u64) as u32;
             if v & !mask != 0 {
                 panic!("Received step input that was too large for the mask!");
             }
@@ -219,7 +221,8 @@ impl Values {
                 todo!();
             }
 
-            let mask = (1 << (range.high - range.low + 1)) - 1;
+            // TODO: Same thing here as above for the other shift
+            let mask = ((1u64 << (range.high as u64 - range.low as u64 + 1u64)) - 1u64) as u32;
             let mut v = (input[lo_word as usize] >> (range.low % 32)) & mask;
             if lo_word != hi_word {
                 v |= input[hi_word as usize] << (32 - range.low % 32);

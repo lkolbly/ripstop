@@ -1,0 +1,9 @@
+### CODE
+
+module type_mismatch(bit a, bits<2> b, bits<3> c) -> (bit a_out, bits<2> b_out, bits<3> c_out) {
+    a_out[t] = b[t];
+    b_out[t] = b[t] + a[t];
+}
+
+### OUTPUT
+Should error

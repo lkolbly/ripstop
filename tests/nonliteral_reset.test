@@ -1,0 +1,8 @@
+### CODE
+
+module nonliteral_reset(bit x) -> (bit y) {
+    y[0] = x[t] + 1'd1;
+}
+
+### OUTPUT
+Should output an error

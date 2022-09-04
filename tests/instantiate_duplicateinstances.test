@@ -1,0 +1,15 @@
+### CODE
+
+module shifter(bits<4> a) -> (bits<4> b) {
+    b[t] = a[t][2:0] ++ 1'd0;
+}
+
+module instantiation(bits<4> a) -> (bits<4> b) {
+    instantiate shifter as my_shifter;
+    instantiate shifter as my_shifter;
+    my_shifter.a[t] = a[t];
+    b[t] = my_shifter.b[t];
+}
+
+### OUTPUT
+Should error

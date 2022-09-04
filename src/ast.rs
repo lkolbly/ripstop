@@ -35,7 +35,7 @@ impl Type {
 }
 
 /// Struct for storing the context of an AST node, such as its position within the input string and the input string representing the node.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct StringContext {
     /// Line number of the start of this node within the input string.
     pub line: usize,

@@ -53,6 +53,19 @@ def compile_rp(rptest):
 
     return target
 
+def expect_rp_compile_failure(rptest):
+    """
+    Generates a temporary file to stuff the generated verilog into, and compiles.
+    """
+    target = TempFile()
+
+    cmd = ["./ripstop", "build", rptest, "-o", target.filename]
+    print(" ".join(cmd))
+    p = subprocess.run(cmd)
+    assert p.returncode != 0
+
+    return target
+
 def test_compiler_correct_codegen(rp_codegen_testname):
     """
     Tests that the compiler output is identical to what we expect it to be
@@ -156,11 +169,13 @@ def test_combined_file(rp_combinedtest_testname):
             elif line == "### COMPILED":
                 current_segment = "compiled"
                 segments[current_segment] = []
+            elif line == "### OUTPUT":
+                current_segment = "output"
+                segments[current_segment] = []
             elif current_segment != None:
                 segments[current_segment].append(line)
         pass
 
-    assert "data" in segments
     assert "code" in segments
 
     codefile = TempFile()
@@ -168,6 +183,18 @@ def test_combined_file(rp_combinedtest_testname):
 
     with open(codefile.filename, "w") as f:
         f.write("\n".join(segments["code"]))
+
+    compiledf = None
+    if "compiled" in segments:
+        compiled = "\n".join(segments["compiled"])
+    elif "output" in segments:
+        # Compiling should fail
+        expect_rp_compile_failure(codefile.filename)
+        return
+    else:
+        compiledf = compile_rp(codefile.filename)
+        with open(compiledf.filename, "r") as f:
+            compiled = f.read()
 
     with open(datafile.filename, "w") as f:
         f.write("\n".join(segments["data"]))
@@ -182,14 +209,6 @@ def test_combined_file(rp_combinedtest_testname):
             "inputs": dut_inputs,
             "outputs": dut_outputs,
         }, test_data, f)
-
-    compiledf = None
-    if "compiled" in segments:
-        compiled = "\n".join(segments["compiled"])
-    else:
-        compiledf = compile_rp(codefile.filename)
-        with open(compiledf.filename, "r") as f:
-            compiled = f.read()
 
     with open(test_harness.filename, "r") as f:
         test = f.read()
