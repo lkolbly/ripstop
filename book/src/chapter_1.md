@@ -41,4 +41,22 @@ What does that look like if we look at the waveform?
 
 It's worth talking about how Ripstop maps to the underlying RTL, because there are some subtleties. Note that we did not specify any inputs to the `blinky` module, yet in the graph we show `clk` and `rst`: These two inputs are implicitly added by the Ripstop compiler. Reset is active-high: so when reset is high, the module is resetting. Variables change on the positive edge of the clock. To see the relationship between one cycle to the next, consider the state immediately before a positive clock edge and compute it to the state immediately after.
 
-So there you have it, your first Ripstop program!
+## Compiling to Verilog
+
+Of course, writing code in Ripstop is great, but it's not very useful if you can't compile it. Ripstop compiles to Verilog using the Ripstop compiler. First, you must either get a copy of it, or build it yourself from the latest `main` branch:
+```
+$ cargo build
+```
+
+If you get an error like `error: failed to run custom build command for pyo3-ffi v0.17.1`, you should specify a Python interpreter greater than version 3.7 using the `PYO3_PYTHON_VERSION` environment variable:
+```
+$ PYO3_PYTHON=/usr/local/bin/python3.10 cargo build
+```
+Building the compiler will place the executable at `target/debug/ripstop`
+
+Once you have the compiler built, you can run it by specifying both the input file and the output file:
+```
+$ ripstop blinky.rp -o output.v
+```
+
+And there you have it, your first Ripstop program!
