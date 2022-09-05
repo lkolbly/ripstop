@@ -86,7 +86,7 @@ If you open the VCD file, you will see the following variables under the `dut`:
 You can see all the input and output signals (`a`, `b`, `c`, `rst`, `clk`). Additionally, you can see variables like `a_0` - Ripstop creates variables to represent different time slices. For example, `c_next` is the value of `c` on the next cycle.
 
 Select some variables to show them on screen:
-![Variables shown](gtkwave_blinky2.png)
+![Variables shown](gtkwave_bliinky2.png)
 
 Here, one thing pops out at us immediately, which is that the Python simulation updates input variables on the falling edge of the clock, so they appear a half-cycle delayed. Just something to watch out for.
 
