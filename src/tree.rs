@@ -104,14 +104,13 @@ impl<T> Tree<T> {
     /// Shorthand to get an immutable reference to one of a node's children
     pub fn get_child_node(&self, id: NodeId, child_index: usize) -> Result<&Node<T>, TreeError> {
         let node = self.get_node(id)?;
-        let children = node
+        let child_id = node
             .children
-            .as_ref()
-            .ok_or(TreeError::ChildrenExpected { node_id: id })?;
-        let child_id = children.get(child_index).ok_or(TreeError::ChildNotFound {
-            node_id: id,
-            child_index,
-        })?;
+            .get(child_index)
+            .ok_or(TreeError::ChildNotFound {
+                node_id: id,
+                child_index,
+            })?;
         self.get_node(*child_id)
     }
 
@@ -129,7 +128,7 @@ impl<T> Tree<T> {
             parent: None,
             previous_sibling: None,
             next_sibling: None,
-            children: None,
+            children: Vec::new(),
             depth: 0,
             data,
         });
@@ -182,20 +181,13 @@ impl<T> Tree<T> {
 
     /// Appends `toappendid` to `nodeid`, making `toappendid` a child of `nodeid`
     pub fn append_to(&mut self, nodeid: NodeId, toappendid: NodeId) -> Result<(), TreeError> {
-        {
-            let mut node = self.get_node_mut(nodeid)?;
-            if node.children.is_none() {
-                node.children = Some(Vec::new());
-            }
-        }
-
         let parent_depth: u32;
 
         let sibling_id = {
             let node = self.get_node_mut(nodeid)?;
             parent_depth = node.depth;
 
-            let children = node.children.as_mut().expect("Should never fail.");
+            let children = &mut node.children;
             if !children.is_empty() {
                 let sibling_id = *children
                     .get(children.len() - 1)
@@ -245,11 +237,9 @@ impl<T> Tree<T> {
             .expect("append_tree called when `tree` had no head")
             + offset;
 
-        fn add_offset_vec(vals: &mut Option<Vec<NodeId>>, offset: NodeId) {
-            if let Some(vals) = vals {
-                for v in vals {
-                    *v += offset;
-                }
+        fn add_offset_vec(vals: &mut Vec<NodeId>, offset: NodeId) {
+            for v in vals {
+                *v += offset;
             }
         }
 
@@ -309,7 +299,7 @@ impl<T> Tree<T> {
 
         for n in self.iter_subtree(head) {
             //If `n` has no children, it is part of the deepest children (which is the starting value of the frontier)
-            if let None = self[n].children {
+            if self[n].children.is_empty() {
                 frontier.insert(n, (f)(&self, n, Vec::new(), static_val)?);
             }
         }
@@ -328,7 +318,7 @@ impl<T> Tree<T> {
 
                 //2.b)
                 let mut sibling_values = Vec::new();
-                for sibling in &parent.children.clone().unwrap() {
+                for sibling in &parent.children.clone() {
                     if let Some(v) = frontier.get(sibling) {
                         sibling_values.push(v);
                     } else {
@@ -394,12 +384,10 @@ impl<'a, T> Iterator for TreeIterator<'a, T> {
         let mut found_next = false;
 
         // If this node has children, move to the first of those children.
-        if let Some(children) = &self.cur_node.children {
-            let child = children.get(0);
-            if let Some(child_id) = child {
-                self.cur_node = self.tree.get_node(*child_id).unwrap();
-                found_next = true;
-            }
+        if !self.cur_node.children.is_empty() {
+            let child_id = self.cur_node.children[0];
+            self.cur_node = self.tree.get_node(child_id).unwrap();
+            found_next = true;
         }
 
         // If this node doesn't have children but has a sibling following it, move to that sibling.
@@ -463,7 +451,7 @@ pub struct Node<T> {
     pub next_sibling: Option<NodeId>,
 
     /// An ordered list of this node's children.
-    pub children: Option<Vec<NodeId>>,
+    pub children: Vec<NodeId>,
 
     /// The depth of this node, with `0` being the tree's root, `1` being the root's children, etc.
     pub depth: u32,

@@ -464,7 +464,7 @@ impl Block {
                         result,
                         Self::from_conditional_children(
                             ast,
-                            ast.get_node(*child).unwrap().children.as_ref().unwrap(),
+                            ast.get_node(*child).unwrap().children.as_ref(),
                         )
                     );
                     for (k, v) in new_assignments.drain() {
@@ -522,11 +522,7 @@ impl Block {
                     result,
                     Block::from_ast_with_offsets(
                         ast,
-                        ast.get_node(children[0])
-                            .unwrap()
-                            .children
-                            .as_ref()
-                            .unwrap_or(&vec![]),
+                        ast.get_node(children[0]).unwrap().children.as_ref(),
                         false,
                     )
                 )
@@ -538,11 +534,7 @@ impl Block {
                     result,
                     Block::from_ast_with_offsets(
                         ast,
-                        ast.get_node(children[1])
-                            .unwrap()
-                            .children
-                            .as_ref()
-                            .unwrap(),
+                        ast.get_node(children[1]).unwrap().children.as_ref(),
                         false,
                     )
                 );
@@ -725,20 +717,14 @@ impl Module {
 
         // Get all the module instantiations
         let mut instantiations = HashMap::new();
-        for (instance, module) in ast
-            .get_node(head)
-            .unwrap()
-            .children
-            .as_ref()
-            .unwrap()
-            .iter()
-            .flat_map(|n| match &ast.get_node(*n).unwrap().data.node_type {
+        for (instance, module) in ast.get_node(head).unwrap().children.iter().flat_map(|n| {
+            match &ast.get_node(*n).unwrap().data.node_type {
                 ASTNodeType::ModuleInstantiation { module, instance } => {
                     Some((instance.to_owned(), module.to_owned()))
                 }
                 _ => None,
-            })
-        {
+            }
+        }) {
             if instantiations.contains_key(&instance) {
                 panic!(
                     "Cannot have multiple instantiations with name {}!",
@@ -753,8 +739,6 @@ impl Module {
             .get_node(head)
             .unwrap()
             .children
-            .as_ref()
-            .unwrap()
             .iter()
             .flat_map(|n| match &ast.get_node(*n).unwrap().data.node_type {
                 ASTNodeType::VariableDeclaration { var_type, var_id } => {
@@ -783,8 +767,6 @@ impl Module {
             .get_node(head)
             .unwrap()
             .children
-            .as_ref()
-            .unwrap()
             .iter()
             .flat_map(|n| {
                 match &ast.get_node(*n).unwrap().data.node_type {
@@ -829,11 +811,7 @@ impl Module {
         // Now build the assigns themselves
         let block = logerror!(
             result,
-            Block::from_ast(
-                ast,
-                ast.get_node(head).unwrap().children.as_ref().unwrap(),
-                true,
-            )
+            Block::from_ast(ast, ast.get_node(head).unwrap().children.as_ref(), true,)
         );
 
         // Type-check everything

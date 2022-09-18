@@ -116,10 +116,7 @@ fn get_node_type(
         | ASTNodeType::BitwiseXor => {
             //The error which will be returned if a type mismatch occurs
             let err = Err(CompileError::MismatchedTypes {
-                context: tree[this_node.children.clone().unwrap()[0]]
-                    .data
-                    .context
-                    .clone(),
+                context: tree[this_node.children.clone()[0]].data.context.clone(),
                 current_type: child_vals[1],
                 needed_type: child_vals[0],
             });
@@ -144,10 +141,7 @@ fn get_node_type(
         | ASTNodeType::LessEq => {
             //The error which will be returned if a type mismatch occurs
             let err = Err(CompileError::MismatchedTypes {
-                context: tree[this_node.children.clone().unwrap()[0]]
-                    .data
-                    .context
-                    .clone(),
+                context: tree[this_node.children.clone()[0]].data.context.clone(),
                 current_type: child_vals[1],
                 needed_type: child_vals[0],
             });
@@ -192,7 +186,6 @@ fn get_node_type(
                 &mut this_node
                     .children
                     .clone()
-                    .unwrap_or_default()
                     .into_iter()
                     .map(|id| tree[id].data.clone())
                     .collect(),
@@ -213,7 +206,7 @@ fn verify(tree: &Tree<ASTNode>, variables: &HashMap<String, VarBounds>) -> Compi
         #[allow(clippy::single_match)] // Just for now, to silence the warning
         match &tree[n].data.node_type {
             ASTNodeType::Assign => {
-                let children = tree[n].children.clone().unwrap();
+                let children = tree[n].children.clone();
                 let lhs_t = singleerror!(
                     result,
                     tree.recurse_iterative(children[0], get_node_type, variables)
@@ -378,7 +371,7 @@ fn get_var_bounds(
                 );
             }
             ASTNodeType::Assign => {
-                let lhs = tree.get_node(nodeid).unwrap().children.as_ref().unwrap()[0];
+                let lhs = tree.get_node(nodeid).unwrap().children[0];
                 if let ASTNodeType::VariableReference { var_id } =
                     &tree.get_node(lhs).unwrap().data.node_type
                 {
@@ -553,13 +546,7 @@ pub fn compile_document(tree: &mut Tree<ASTNode>) -> CompileResult<(Vec<Module>,
         result,
         tree.find_head().ok_or(CompileError::CouldNotFindASTHead)
     );
-    let children: Vec<_> = tree
-        .get_node(head)
-        .unwrap()
-        .children
-        .as_ref()
-        .unwrap()
-        .to_owned();
+    let children: Vec<_> = tree.get_node(head).unwrap().children.to_owned();
     let mut modules = vec![];
     for &child in children.iter() {
         if let Some((module, mut module_vast)) =
@@ -587,14 +574,7 @@ fn get_module_declarations(tree: &mut Tree<ASTNode>) -> CompileResult<Vec<Module
     );
 
     let mut modules = vec![];
-    for child in tree
-        .get_node(head)
-        .unwrap()
-        .children
-        .as_ref()
-        .unwrap()
-        .iter()
-    {
+    for child in tree.get_node(head).unwrap().children.iter() {
         match &tree.get_node(*child).unwrap().data.node_type {
             ASTNodeType::ModuleDeclaration {
                 id,
@@ -1224,7 +1204,7 @@ pub fn compile_module(
     }*/
 
     // Add the @(posedge clk) block if it's non-empty
-    if v_tree.get_node(clock_edge).unwrap().children.is_some() {
+    if !v_tree.get_node(clock_edge).unwrap().children.is_empty() {
         singleerror!(result, v_tree.append_to(v_head, clock_edge));
     }
 
