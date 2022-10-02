@@ -6,14 +6,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyType};
 use std::collections::HashMap;
 
-mod ast;
-mod compile;
-mod error;
-mod ir;
-mod parse;
-mod simulation;
-mod tree;
-mod verilog_ast;
+use ripstop::*;
 
 /// Formats the sum of two numbers as string.
 #[pyfunction]
@@ -23,14 +16,15 @@ fn sum_as_string(a: usize, b: usize) -> PyResult<String> {
 
 #[pyclass]
 struct SimulationInstance {
-    instance: Option<crate::simulation::Instance>,
+    instance: Option<ripstop::simulation::Instance>,
 }
 
 #[pymethods]
 impl SimulationInstance {
     #[new]
     fn new(path: String, top: String) -> Self {
-        let module = crate::simulation::Module::new(std::path::PathBuf::from(path), &top).unwrap();
+        let module =
+            ripstop::simulation::Module::new(std::path::PathBuf::from(path), &top).unwrap();
         Self {
             instance: Some(module.instantiate()),
         }
@@ -40,7 +34,7 @@ impl SimulationInstance {
         self.instance
             .as_mut()
             .unwrap()
-            .reset_step(crate::simulation::Values(input))
+            .reset_step(ripstop::simulation::Values(input))
             .0
     }
 
@@ -48,7 +42,7 @@ impl SimulationInstance {
         self.instance
             .as_mut()
             .unwrap()
-            .step(crate::simulation::Values(input))
+            .step(ripstop::simulation::Values(input))
             .0
     }
 

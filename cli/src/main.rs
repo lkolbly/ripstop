@@ -6,20 +6,10 @@ use clap::{Parser, Subcommand};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 
-mod ast;
-mod compile;
-mod error;
-mod ir;
-mod parse;
-mod simulation;
-mod tree;
-mod verilog_ast;
-
-use ast::*;
-use compile::*;
-use parse::parse;
-
-use crate::verilog_ast::verilog_ast_to_string;
+use ripstop::ast::*;
+use ripstop::compile::*;
+use ripstop::parse::parse;
+use ripstop::verilog_ast::verilog_ast_to_string;
 
 #[derive(Parser, Debug)]
 #[clap(version, about)]
@@ -108,14 +98,14 @@ fn main() {
             std::process::exit(compile(input, output));
         }
         Commands::Simulate { input, top } => {
-            let m = crate::simulation::Module::new(input, &top).unwrap();
+            let m = ripstop::simulation::Module::new(input, &top).unwrap();
             let mut instance = m.instantiate();
 
-            instance.reset_step(crate::simulation::Values(HashMap::from([
+            instance.reset_step(ripstop::simulation::Values(HashMap::from([
                 ("data_in".to_string(), 0),
                 ("save".to_string(), 0),
             ])));
-            instance.reset_step(crate::simulation::Values(HashMap::from([
+            instance.reset_step(ripstop::simulation::Values(HashMap::from([
                 ("data_in".to_string(), 0),
                 ("save".to_string(), 0),
             ])));
@@ -123,7 +113,7 @@ fn main() {
             for i in 0..10 {
                 println!(
                     "{:?}",
-                    instance.step(crate::simulation::Values(HashMap::from([
+                    instance.step(ripstop::simulation::Values(HashMap::from([
                         ("data_in".to_string(), 0),
                         ("save".to_string(), 0),
                     ])))
@@ -133,28 +123,28 @@ fn main() {
             // Bit 0 is data_in, bit 1 is save
             println!(
                 "{:?}",
-                instance.step(crate::simulation::Values(HashMap::from([
+                instance.step(ripstop::simulation::Values(HashMap::from([
                     ("data_in".to_string(), 1),
                     ("save".to_string(), 1),
                 ])))
             ); // save 1
             println!(
                 "Should be 1: {:?}",
-                instance.step(crate::simulation::Values(HashMap::from([
+                instance.step(ripstop::simulation::Values(HashMap::from([
                     ("data_in".to_string(), 0),
                     ("save".to_string(), 0),
                 ])))
             ); // Should still be 1
             println!(
                 "Should be 1: {:?}",
-                instance.step(crate::simulation::Values(HashMap::from([
+                instance.step(ripstop::simulation::Values(HashMap::from([
                     ("data_in".to_string(), 1),
                     ("save".to_string(), 0),
                 ])))
             ); // Should still be 1
             println!(
                 "Should be 0: {:?}",
-                instance.step(crate::simulation::Values(HashMap::from([
+                instance.step(ripstop::simulation::Values(HashMap::from([
                     ("data_in".to_string(), 0),
                     ("save".to_string(), 1),
                 ])))
