@@ -17,6 +17,7 @@ jobs:
       with:
         python-version: '3.9'
         cache: 'pip'
+    - run: pip install -r requirements.txt
     - name: Cache Rust files
       uses: actions/cache@v3
       with:
@@ -31,8 +32,6 @@ jobs:
       run: cargo test
     - name: Build release
       run: cargo build --release
-    - name: Install Maturin
-      run: pip3 install maturin
     - name: Build Python library
       run: cd pyripstop/ && maturin build --release
 
@@ -84,7 +83,7 @@ jobs:
         name: ripstop-linux
         path: tests/cli
     - name: Rename compiler
-      run: mv tests/cli tests/ripstop && chmod +x tests/ripstop
+      run: mv tests/cli/cli tests/ripstop && chmod +x tests/ripstop
     - name: List files
       run: ls -haltr tests/
     - name: Run tests
@@ -99,6 +98,7 @@ jobs:
       with:
         python-version: '3.9'
         cache: 'pip'
+    - run: pip install -r requirements.txt
     - name: Cache Rust files
       uses: actions/cache@v3
       with:
@@ -109,8 +109,6 @@ jobs:
 
     - name: Build
       run: cargo build --release
-    - name: Install maturin
-      run: pip3 install maturin
     - name: Build python library
       run: cd pyripstop/ && maturin build
 
