@@ -31,10 +31,8 @@ RUN git clone --branch=${IVERILOG_VERSION} https://github.com/steveicarus/iveril
     cd && \
     rm -rf iverilog
 
-FROM debian:stable
+FROM python:bullseye
 
-# TODO: Maybe start from a python base?
-RUN apt -y update && apt install -y python3 python3-pip
 RUN pip3 install pytest
 RUN pip3 install mako
 
