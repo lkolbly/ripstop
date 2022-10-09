@@ -1,0 +1,76 @@
+### CODE
+
+module long_if_else_chain(bits<8> round) -> (bits<32> k) {
+    if round[t] == 8'd0 { k[t] = 32'd1116352408; }
+    else if round[t] == 8'd1 { k[t] = 32'd1899447441; }
+    else if round[t] == 8'd2 { k[t] = 32'd3049323471; }
+    else if round[t] == 8'd3 { k[t] = 32'd3921009573; }
+    else if round[t] == 8'd4 { k[t] = 32'd961987163; }
+    else if round[t] == 8'd5 { k[t] = 32'd1508970993; }
+    else if round[t] == 8'd6 { k[t] = 32'd2453635748; }
+    else if round[t] == 8'd7 { k[t] = 32'd2870763221; }
+    else if round[t] == 8'd8 { k[t] = 32'd3624381080; }
+    else if round[t] == 8'd9 { k[t] = 32'd310598401; }
+    else if round[t] == 8'd10 { k[t] = 32'd607225278; }
+    else if round[t] == 8'd11 { k[t] = 32'd1426881987; }
+    else if round[t] == 8'd12 { k[t] = 32'd1925078388; }
+    else if round[t] == 8'd13 { k[t] = 32'd2162078206; }
+    else if round[t] == 8'd14 { k[t] = 32'd2614888103; }
+    else if round[t] == 8'd15 { k[t] = 32'd3248222580; }
+    else if round[t] == 8'd16 { k[t] = 32'd3835390401; }
+    else if round[t] == 8'd17 { k[t] = 32'd4022224774; }
+    else if round[t] == 8'd18 { k[t] = 32'd264347078; }
+    else if round[t] == 8'd19 { k[t] = 32'd604807628; }
+    else if round[t] == 8'd20 { k[t] = 32'd770255983; }
+    else if round[t] == 8'd21 { k[t] = 32'd1249150122; }
+    else if round[t] == 8'd22 { k[t] = 32'd1555081692; }
+    else if round[t] == 8'd23 { k[t] = 32'd1996064986; }
+    else if round[t] == 8'd24 { k[t] = 32'd2554220882; }
+    else if round[t] == 8'd25 { k[t] = 32'd2821834349; }
+    else if round[t] == 8'd26 { k[t] = 32'd2952996808; }
+    else if round[t] == 8'd27 { k[t] = 32'd3210313671; }
+    else if round[t] == 8'd28 { k[t] = 32'd3336571891; }
+    else if round[t] == 8'd29 { k[t] = 32'd3584528711; }
+    else if round[t] == 8'd30 { k[t] = 32'd113926993; }
+    else if round[t] == 8'd31 { k[t] = 32'd338241895; }
+    else if round[t] == 8'd32 { k[t] = 32'd666307205; }
+    else if round[t] == 8'd33 { k[t] = 32'd773529912; }
+    else if round[t] == 8'd34 { k[t] = 32'd1294757372; }
+    else if round[t] == 8'd35 { k[t] = 32'd1396182291; }
+    else if round[t] == 8'd36 { k[t] = 32'd1695183700; }
+    else if round[t] == 8'd37 { k[t] = 32'd1986661051; }
+    else if round[t] == 8'd38 { k[t] = 32'd2177026350; }
+    else if round[t] == 8'd39 { k[t] = 32'd2456956037; }
+    else if round[t] == 8'd40 { k[t] = 32'd2730485921; }
+    else if round[t] == 8'd41 { k[t] = 32'd2820302411; }
+    else if round[t] == 8'd42 { k[t] = 32'd3259730800; }
+    else if round[t] == 8'd43 { k[t] = 32'd3345764771; }
+    else if round[t] == 8'd44 { k[t] = 32'd3516065817; }
+    else if round[t] == 8'd45 { k[t] = 32'd3600352804; }
+    else if round[t] == 8'd46 { k[t] = 32'd4094571909; }
+    else if round[t] == 8'd47 { k[t] = 32'd275423344; }
+    else if round[t] == 8'd48 { k[t] = 32'd430227734; }
+    else if round[t] == 8'd49 { k[t] = 32'd506948616; }
+    else if round[t] == 8'd50 { k[t] = 32'd659060556; }
+    else if round[t] == 8'd51 { k[t] = 32'd883997877; }
+    else if round[t] == 8'd52 { k[t] = 32'd958139571; }
+    else if round[t] == 8'd53 { k[t] = 32'd1322822218; }
+    else if round[t] == 8'd54 { k[t] = 32'd1537002063; }
+    else if round[t] == 8'd55 { k[t] = 32'd1747873779; }
+    else if round[t] == 8'd56 { k[t] = 32'd1955562222; }
+    else if round[t] == 8'd57 { k[t] = 32'd2024104815; }
+    else if round[t] == 8'd58 { k[t] = 32'd2227730452; }
+    else if round[t] == 8'd59 { k[t] = 32'd2361852424; }
+    else if round[t] == 8'd60 { k[t] = 32'd2428436474; }
+    else if round[t] == 8'd61 { k[t] = 32'd2756734187; }
+    else if round[t] == 8'd62 { k[t] = 32'd3204031479; }
+    else if round[t] == 8'd63 { k[t] = 32'd3329325298; }
+}
+
+### DATA
+rst,round in 8,k out 32
+1,0,x
+0,0,1116352408
+0,37,1986661051
+0,62,3204031479
+0,63,3329325298

@@ -127,8 +127,9 @@ impl<T> CompileResult<T> {
 #[macro_export]
 macro_rules! logerror {
     ($errors: ident, $result: expr) => {{
-        $errors.errors.append(&mut $result.errors);
-        match $result.result {
+        let mut res = $result;
+        $errors.errors.append(&mut res.errors);
+        match res.result {
             Some(x) => x,
             None => {
                 println!("Passing along error at {} {}", file!(), line!());
@@ -137,10 +138,11 @@ macro_rules! logerror {
         }
     }};
     ($errors: ident, $result: expr, $or_else: expr) => {
-        errors.errors.push(result.errors);
-        match result {
+        let res = $result;
+        $errors.errors.push(res.errors);
+        match res {
             Some(x) => x,
-            None => or_else,
+            None => $or_else,
         }
     };
 }
@@ -148,8 +150,9 @@ macro_rules! logerror {
 #[macro_export]
 macro_rules! noncriterr {
     ($errors: ident, $result: expr) => {{
-        $errors.errors.append(&mut $result.errors);
-        $result.result
+        let mut res = $result;
+        $errors.errors.append(&mut res.errors);
+        res.result
     }};
 }
 
