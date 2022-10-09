@@ -13,6 +13,18 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+    - uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        cache: 'pip'
+    - name: Cache Rust files
+      uses: actions/cache@v3
+      with:
+        key: ripstop-linux-rust-cache
+        path: |
+          ./target/debug
+          ./target/release
+
     - name: Build
       run: cargo build
     - name: Run unit tests
@@ -22,7 +34,7 @@ jobs:
     - name: Install Maturin
       run: pip3 install maturin
     - name: Build Python library
-      run: cd pyripstop/ && maturin build
+      run: cd pyripstop/ && maturin build --release
 
     - name: Upload CLI
       uses: actions/upload-artifact@v3
@@ -73,6 +85,8 @@ jobs:
         path: tests/cli
     - name: Rename compiler
       run: mv tests/cli tests/ripstop && chmod +x tests/ripstop
+    - name: List files
+      run: ls -haltr tests/
     - name: Run tests
       run: cd tests/ && pytest ./run_tests.py
 
@@ -81,12 +95,27 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+    - uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        cache: 'pip'
+    - name: Cache Rust files
+      uses: actions/cache@v3
+      with:
+        key: ripstop-linux-rust-cache
+        path: |
+          ./target/debug
+          ./target/release
+
     - name: Build
       run: cargo build --release
     - name: Install maturin
       run: pip3 install maturin
     - name: Build python library
       run: cd pyripstop/ && maturin build
+
+    - name: Show wheels
+      run: ls target && ls target/wheels
 
     - name: Upload CLI
       uses: actions/upload-artifact@v3
