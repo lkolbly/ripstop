@@ -113,7 +113,7 @@ jobs:
       run: cd pyripstop/ && maturin build
 
     - name: Show wheels
-      run: ls target && ls target/wheels
+      run: ls target && ls target/wheels && ls target/release
 
     - name: Upload CLI
       uses: actions/upload-artifact@v3
