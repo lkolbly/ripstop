@@ -78,6 +78,7 @@ def test_compiler_correct_codegen(rp_codegen_testname):
     compiled.rm()
     assert actual == expected
 
+@pytest.mark.skip(reason="Not implemented")
 def test_compiler_correct_output(rp_output_testname):
     assert False # Unimplemented
 
