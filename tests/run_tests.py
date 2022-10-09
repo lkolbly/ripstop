@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import sys
 from mako.template import Template
+import pytest
 
 def get_files(pattern):
     files = os.listdir(".")
