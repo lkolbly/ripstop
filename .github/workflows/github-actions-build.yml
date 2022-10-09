@@ -17,3 +17,27 @@ jobs:
       run: cargo build
     - name: Run unit tests
       run: cargo test
+    - name: Build release
+      run: cargo build --release
+    - name: Install Maturin
+      run: pip3 install maturin
+    - name: Build Python library
+      run: cd pyripstop/ && maturin build
+
+    - name: Upload CLI
+      uses: actions/upload-artifact@v3
+      with:
+        name: Compiler CLI
+        path: target/release/cli
+    - name: Upload Wheels
+      uses: actions/upload-artifact@v3
+      with:
+        name: Wheels
+        path: target/wheels/
+
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+    - name: Build Windows
+      run: cargo build --release
