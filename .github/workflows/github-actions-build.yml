@@ -119,7 +119,7 @@ jobs:
       uses: actions/upload-artifact@v3
       with:
         name: ripstop-windows
-        path: target/release/cli
+        path: target/release/cli.exe
     - name: Upload Wheels
       uses: actions/upload-artifact@v3
       with:
