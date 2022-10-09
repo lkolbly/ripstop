@@ -1,12 +1,5 @@
-use crate::ast::{StringContext, Type};
-use std::collections::{HashMap, HashSet};
-
-use crate::{
-    ast::{ASTNode, ASTNodeType},
-    ir::{BinaryOperator, Expression, Module, UnaryOperator},
-    tree::{NodeId, Tree, TreeError},
-    verilog_ast::{AlwaysBeginTriggerType, VNode},
-};
+use crate::ast::{ASTNode, StringContext, Type};
+use crate::tree::TreeError;
 
 #[derive(Clone)]
 pub enum CompileError {

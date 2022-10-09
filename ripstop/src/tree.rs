@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     fmt,
     ops::{Add, AddAssign, Index, IndexMut, Sub, SubAssign},
 };

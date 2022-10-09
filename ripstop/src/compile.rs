@@ -1,8 +1,5 @@
-use crate::{
-    ast::{StringContext, Type},
-    ir::ModuleDeclaration,
-};
-use std::collections::{HashMap, HashSet};
+use crate::{ast::Type, ir::ModuleDeclaration};
+use std::collections::HashMap;
 
 use crate::{
     ast::{ASTNode, ASTNodeType},
@@ -423,8 +420,10 @@ fn compile_ir_expression(
             });
             let mut lhs = compile_ir_expression(state, &lhs)?;
             let mut rhs = compile_ir_expression(state, &rhs)?;
-            vast.append_tree(node, &mut lhs);
-            vast.append_tree(node, &mut rhs);
+            vast.append_tree(node, &mut lhs)
+                .expect("Couldn't append to tree");
+            vast.append_tree(node, &mut rhs)
+                .expect("Couldn't append to tree");
         }
         LogicalExpression::UnaryOperation {
             operation,
@@ -454,7 +453,7 @@ fn compile_ir_expression(
             } else {
                 let node = vast.new_node(match operation {
                     UnaryOperator::Negation => VNode::BitwiseInverse {},
-                    UnaryOperator::Index(range) => {
+                    UnaryOperator::Index(_range) => {
                         panic!("Should have been handled in the above case");
                     }
                 });
@@ -471,9 +470,12 @@ fn compile_ir_expression(
             let node = vast.new_node(VNode::Ternary {});
             let mut lhs = compile_ir_expression(state, &lhs)?;
             let mut rhs = compile_ir_expression(state, &rhs)?;
-            vast.append_tree(node, &mut condition);
-            vast.append_tree(node, &mut lhs);
-            vast.append_tree(node, &mut rhs);
+            vast.append_tree(node, &mut condition)
+                .expect("Couldn't append to tree");
+            vast.append_tree(node, &mut lhs)
+                .expect("Couldn't append to tree");
+            vast.append_tree(node, &mut rhs)
+                .expect("Couldn't append to tree");
         }
         LogicalExpression::VariableReference(reference) => {
             // Get t-offset
@@ -497,9 +499,6 @@ fn compile_ir_expression(
         }
         LogicalExpression::NumberLiteral(literal) => {
             vast.new_node(VNode::NumberLiteral { literal: *literal });
-        }
-        _ => {
-            unimplemented!();
         }
     }
 
@@ -577,9 +576,9 @@ fn get_module_declarations(tree: &mut Tree<ASTNode>) -> CompileResult<Vec<Module
     for child in tree.get_node(head).unwrap().children.iter() {
         match &tree.get_node(*child).unwrap().data.node_type {
             ASTNodeType::ModuleDeclaration {
-                id,
-                in_values,
-                out_values,
+                id: _id,
+                in_values: _in_values,
+                out_values: _out_values,
             } => {
                 if let Some(module) = noncriterr!(result, ModuleDeclaration::from_ast(tree, *child))
                 {
@@ -750,7 +749,7 @@ pub fn compile_module(
     }
 
     //Register chain creation for each variable
-    for (name, vartype) in module.variables.clone().iter() {
+    for (name, _vartype) in module.variables.clone().iter() {
         //Create the possible index for this node for use with `compile_var_ref_from_string`
         let index = None;
         /*let index = match vartype {
@@ -1223,7 +1222,7 @@ fn variable_name(
         ASTNodeType::TimeOffsetRelative { offset } => {
             variable_name_relative(var_id, offset + time_shift)
         }
-        ASTNodeType::TimeOffsetAbsolute { time } => todo!(),
+        ASTNodeType::TimeOffsetAbsolute { time: _time } => todo!(),
         _ => unreachable!(),
     }
 }

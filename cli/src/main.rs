@@ -1,12 +1,7 @@
-extern crate pest;
-#[macro_use]
-extern crate pest_derive;
-
 use clap::{Parser, Subcommand};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 
-use ripstop::ast::*;
 use ripstop::compile::*;
 use ripstop::parse::parse;
 use ripstop::verilog_ast::verilog_ast_to_string;
@@ -110,7 +105,7 @@ fn main() {
                 ("save".to_string(), 0),
             ])));
 
-            for i in 0..10 {
+            for _ in 0..10 {
                 println!(
                     "{:?}",
                     instance.step(ripstop::simulation::Values(HashMap::from([

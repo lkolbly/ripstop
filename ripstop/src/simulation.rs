@@ -1,8 +1,7 @@
-use clap::{Parser, Subcommand};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Write};
-use subprocess::{Popen, PopenConfig, Redirection};
+use subprocess::Popen;
 
 use crate::ast::*;
 use crate::compile::*;
@@ -242,7 +241,7 @@ pub struct Instance {
 
 impl Instance {
     fn new(module: Module) -> Self {
-        let mut p = subprocess::Popen::create(
+        let p = subprocess::Popen::create(
             &["./a.out"],
             subprocess::PopenConfig {
                 stdin: subprocess::Redirection::Pipe,

@@ -1,12 +1,8 @@
-extern crate pest;
-#[macro_use]
-extern crate pest_derive;
-
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyType};
 use std::collections::HashMap;
 
-use ripstop::*;
+use ripstop;
 
 /// Formats the sum of two numbers as string.
 #[pyfunction]
@@ -53,7 +49,7 @@ impl SimulationInstance {
 
     fn __exit__(
         &mut self,
-        ty: Option<&PyType>,
+        _ty: Option<&PyType>,
         _value: Option<&PyAny>,
         _traceback: Option<&PyAny>,
     ) -> PyResult<bool> {

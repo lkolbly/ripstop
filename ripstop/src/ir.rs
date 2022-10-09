@@ -5,13 +5,11 @@
 /// The IR is time-aware.
 use std::collections::HashMap;
 
-use pest::prec_climber::Operator;
-
 use crate::ast::{ASTNode, ASTNodeType, StringContext, Type};
 use crate::error::{CompileError, CompileResult};
+use crate::logerror;
 use crate::parse::{NumberLiteral, Range};
 use crate::tree::{NodeId, Tree};
-use crate::{logerror, noncriterr, singleerror};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TimeReference {
@@ -252,9 +250,6 @@ impl Expression {
                 }
             }
             LogicalExpression::NumberLiteral(_) => None,
-            _ => {
-                unimplemented!();
-            }
         }
     }
 
@@ -650,7 +645,7 @@ impl Block {
         }
 
         // TODO: Tighten this down a bit
-        (min..max)
+        min..max
     }
 }
 

@@ -11,11 +11,4 @@ crate-type = [ "cdylib" ]
 
 [dependencies]
 ripstop = { path = "../ripstop" }
-pest = "2.0"
-pest_derive = "2.0"
-lazy_static = "1.4.0"
-clap = { version = "3.2.16", features = [ "derive" ] }
-subprocess = "0.2.9"
-tera = "1.17.0"
-serde = { version = "1.0.114", features = [ "derive" ] }
 pyo3 = { version = "0.17.0", features = [ "extension-module" ] }

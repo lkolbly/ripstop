@@ -1,4 +1,4 @@
-use crate::{error::CompileError, parse::Rule};
+use crate::parse::Rule;
 use pest::iterators::Pair;
 use serde::Serialize;
 use std::fmt::Display;
