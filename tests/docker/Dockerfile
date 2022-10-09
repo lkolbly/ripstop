@@ -37,3 +37,5 @@ RUN pip3 install pytest
 RUN pip3 install mako
 
 COPY --from=builder /usr/local /usr/local
+
+CMD bash

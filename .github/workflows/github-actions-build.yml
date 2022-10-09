@@ -8,7 +8,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  build-linux:
     runs-on: ubuntu-latest
 
     steps:
@@ -27,17 +27,74 @@ jobs:
     - name: Upload CLI
       uses: actions/upload-artifact@v3
       with:
-        name: Compiler CLI
+        name: ripstop-linux
         path: target/release/cli
     - name: Upload Wheels
       uses: actions/upload-artifact@v3
       with:
-        name: Wheels
+        name: pyripstop-linux
         path: target/wheels/
+
+  integration-test-docker:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Docker Layer Caching
+      uses: satackey/action-docker-layer-caching@v0.0.11
+    - name: Build
+      run: cd tests/docker/ && docker build -t ghcr.io/lkolbly/rptest .
+    - name: Log in to the Container registry
+      uses: docker/login-action@f054a8b539a109f9f41c372932f1ae047eff08c9
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    - name: Push
+      run: docker push ghcr.io/lkolbly/rptest:latest
+
+  integration-tests:
+    runs-on: ubuntu-latest
+
+    needs: [integration-test-docker, build-linux]
+
+    container:
+      image: ghcr.io/lkolbly/rptest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.github_token }}
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Copy compiler
+      uses: actions/download-artifact@v3
+      with:
+        name: ripstop-linux
+        path: tests/cli
+    - name: Rename compiler
+      run: mv tests/cli tests/ripstop
+    - name: Run tests
+      run: cd tests/ && pytest ./run_tests.py
 
   build-windows:
     runs-on: windows-latest
 
     steps:
-    - name: Build Windows
+    - uses: actions/checkout@v3
+    - name: Build
       run: cargo build --release
+    - name: Install maturin
+      run: pip3 install maturin
+    - name: Build python library
+      run: cd pyripstop/ && maturin build
+
+    - name: Upload CLI
+      uses: actions/upload-artifact@v3
+      with:
+        name: ripstop-windows
+        path: target/release/cli
+    - name: Upload Wheels
+      uses: actions/upload-artifact@v3
+      with:
+        name: pyripstop-windows
+        path: target/wheels/
