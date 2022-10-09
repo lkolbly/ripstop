@@ -551,13 +551,10 @@ pub fn compile_document(tree: &mut Tree<ASTNode>) -> CompileResult<(Vec<Module>,
         if let Some((module, mut module_vast)) =
             noncriterr!(result, compile_module(tree, child, &declarations))
         {
-            println!("Compiled module {}", module.name);
             modules.push(module);
             singleerror!(result, vast.append_tree(v_head, &mut module_vast));
         }
     }
-
-    println!("{:#?}", result.errors);
 
     result.ok((modules, vast));
     result
@@ -582,7 +579,6 @@ fn get_module_declarations(tree: &mut Tree<ASTNode>) -> CompileResult<Vec<Module
             } => {
                 if let Some(module) = noncriterr!(result, ModuleDeclaration::from_ast(tree, *child))
                 {
-                    println!("Found module {}", module.name);
                     modules.push(module);
                 }
             }

@@ -29,7 +29,7 @@ lazy_static! {
             | Operator::new(Rule::less, Assoc::Left)
             | Operator::new(Rule::greater_eq, Assoc::Left)
             | Operator::new(Rule::less_eq, Assoc::Left),
-            Operator::new(Rule::bitwise_and, Assoc::Left)
+        Operator::new(Rule::bitwise_and, Assoc::Left)
             | Operator::new(Rule::bitwise_xor, Assoc::Left)
             | Operator::new(Rule::bitwise_or, Assoc::Left),
         Operator::new(Rule::addition, Assoc::Left) | Operator::new(Rule::subtraction, Assoc::Left),
@@ -45,7 +45,6 @@ pub fn parse(toparse: &str) -> Result<Tree<ASTNode>, CompileError> {
                 positives,
                 negatives,
             } => {
-                println!("{:?} {:?}", positives, negatives);
                 return Err(CompileError::ParseError {
                     expected: positives.iter().map(|rule| format!("{:?}", rule)).collect(),
                     location: StringContext::from_location(toparse, &e.line_col),
@@ -119,8 +118,6 @@ pub fn parse(toparse: &str) -> Result<Tree<ASTNode>, CompileError> {
                 var_id: inner_rules.next().unwrap().as_str().to_string(),
             }),
             Rule::index_expression => {
-                println!("{:#?}", inner_rules);
-
                 let indexee = inner_rules.next().unwrap();
                 let index = inner_rules.next().unwrap();
 
@@ -144,13 +141,9 @@ pub fn parse(toparse: &str) -> Result<Tree<ASTNode>, CompileError> {
                 tree.append_to(index_node, indexee).unwrap();
                 return Some(index_node);
             }
-            Rule::conditional => {
-                println!("{:#?}", inner_rules);
-                Some(ASTNodeType::Conditional)
-            }
+            Rule::conditional => Some(ASTNodeType::Conditional),
             Rule::conditional_block => Some(ASTNodeType::Block),
             Rule::instantiate_statement => {
-                println!("{:#?}", inner_rules);
                 let module = inner_rules.next().unwrap();
                 let instance = inner_rules.next().unwrap();
 
@@ -326,10 +319,7 @@ impl NumberLiteral {
         let rule = tree.as_rule();
         let inner = tree.into_inner();
         let mut tree = match rule {
-            Rule::number_literal => {
-                println!("{:?}", inner);
-                inner
-            }
+            Rule::number_literal => inner,
             _ => {
                 panic!("Unexpected rule! {:?}", rule);
             }
@@ -345,9 +335,7 @@ impl NumberLiteral {
         let inner = tree.into_inner();
         match rule {
             Rule::full_number_literal => {
-                println!("{:?}", inner);
                 for pair in inner {
-                    println!("{:?}", pair);
                     let rule = pair.as_rule();
                     match rule {
                         Rule::number_literal_bits => {
@@ -376,8 +364,6 @@ impl NumberLiteral {
                 panic!("Unexpected rule! {:?}", rule);
             }
         };
-
-        println!("{:?} {:?} {:?}", num_bits, base, digits);
 
         match (num_bits, base, digits) {
             (Some(num_bits), Some(base), Some(digits)) => {
@@ -412,7 +398,6 @@ impl NumberLiteral {
                     panic!("Number was too big!");
                 }
 
-                println!("{} {} {}", num_bits, base, value);
                 Self {
                     size_bits: num_bits,
                     value,
