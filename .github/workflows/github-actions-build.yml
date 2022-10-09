@@ -72,7 +72,7 @@ jobs:
         name: ripstop-linux
         path: tests/cli
     - name: Rename compiler
-      run: mv tests/cli tests/ripstop
+      run: mv tests/cli tests/ripstop && chmod +x tests/ripstop
     - name: Run tests
       run: cd tests/ && pytest ./run_tests.py
 
