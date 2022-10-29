@@ -663,6 +663,7 @@ impl ModuleDeclaration {
         let (id, in_values, out_values) = match &ast[node].data.node_type {
             ASTNodeType::ModuleDeclaration {
                 id,
+                doc_comment: _,
                 in_values,
                 out_values,
             } => (id, in_values, out_values),
@@ -702,6 +703,7 @@ impl Module {
         let (id, in_values, out_values) = match &ast[head].data.node_type {
             ASTNodeType::ModuleDeclaration {
                 id,
+                doc_comment: _,
                 in_values,
                 out_values,
             } => (id, in_values, out_values),

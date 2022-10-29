@@ -130,6 +130,7 @@ pub enum ASTNodeType {
     //This is the head of a module. The code within a module is entirely children of the module
     ModuleDeclaration {
         id: String,
+        doc_comment: String,
         in_values: Vec<(Type, String)>,
         out_values: Vec<(Type, String)>,
     },

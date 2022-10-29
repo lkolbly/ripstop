@@ -329,6 +329,7 @@ fn get_var_bounds(
         match &tree[nodeid].data.node_type {
             ASTNodeType::ModuleDeclaration {
                 id: _,
+                doc_comment: _,
                 in_values,
                 out_values,
             } => {
@@ -574,6 +575,7 @@ fn get_module_declarations(tree: &mut Tree<ASTNode>) -> CompileResult<Vec<Module
         match &tree.get_node(*child).unwrap().data.node_type {
             ASTNodeType::ModuleDeclaration {
                 id: _id,
+                doc_comment: _doc_comment,
                 in_values: _in_values,
                 out_values: _out_values,
             } => {

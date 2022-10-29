@@ -9,6 +9,7 @@ use crate::tree::Tree;
 use lazy_static::lazy_static;
 
 use pest::iterators::Pair;
+use pest::iterators::Pairs;
 use pest::prec_climber::Assoc;
 use pest::prec_climber::Operator;
 use pest::prec_climber::PrecClimber;
@@ -61,17 +62,45 @@ pub fn parse(toparse: &str) -> Result<Tree<ASTNode>, CompileError> {
     parse_value(&mut tree, parsed);
     return Ok(tree);
 
+    fn consume_doc_comments<'a>(rules: &'_ mut Pairs<'a, Rule>) -> (String, Pair<'a, Rule>) {
+        let next_elem = rules.next().unwrap();
+        match next_elem.as_rule() {
+            Rule::doc_comment => {
+                let (comment, remaining) = consume_doc_comments(rules);
+                (
+                    format!(
+                        "{} {}",
+                        next_elem.as_str().strip_prefix("///").unwrap().trim(),
+                        comment
+                    )
+                    .trim()
+                    .to_string(),
+                    remaining,
+                )
+            }
+            _ => ("".to_string(), next_elem),
+        }
+    }
+
     fn parse_value(tree: &mut Tree<ASTNode>, pair: Pair<'_, Rule>) -> Option<NodeId> {
         let rule = pair.as_rule();
         let mut inner_rules = pair.clone().into_inner();
 
         let node_type = match rule {
             Rule::document => Some(ASTNodeType::Document),
-            Rule::module_declaration => Some(ASTNodeType::ModuleDeclaration {
-                id: inner_rules.next().unwrap().as_str().to_string(),
-                in_values: parse_variable_declarations(inner_rules.next().unwrap()),
-                out_values: parse_variable_declarations(inner_rules.next().unwrap()),
-            }),
+            Rule::module_declaration => {
+                let (doc_comment, id) = consume_doc_comments(&mut inner_rules);
+                let id = id.as_str().to_string();
+
+                let in_values = parse_variable_declarations(inner_rules.next().unwrap());
+                let out_values = parse_variable_declarations(inner_rules.next().unwrap());
+                Some(ASTNodeType::ModuleDeclaration {
+                    id,
+                    doc_comment,
+                    in_values,
+                    out_values,
+                })
+            }
             Rule::assignment => Some(ASTNodeType::Assign),
             Rule::indexed_variable => Some(ASTNodeType::VariableReference {
                 var_id: inner_rules.next().unwrap().as_str().to_string(),
