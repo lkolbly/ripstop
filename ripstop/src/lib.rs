@@ -8,6 +8,7 @@ pub mod error;
 pub mod ir;
 pub mod parse;
 pub mod simulation;
+pub mod test;
 pub mod tree;
 pub mod verilog_ast;
 

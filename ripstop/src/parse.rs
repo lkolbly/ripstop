@@ -69,7 +69,7 @@ pub fn parse(toparse: &str) -> Result<Tree<ASTNode>, CompileError> {
                 let (comment, remaining) = consume_doc_comments(rules);
                 (
                     format!(
-                        "{} {}",
+                        "{}\n{}",
                         next_elem.as_str().strip_prefix("///").unwrap().trim(),
                         comment
                     )

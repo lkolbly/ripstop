@@ -176,7 +176,7 @@ impl Module {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Values(pub HashMap<String, u32>);
 
 impl Values {

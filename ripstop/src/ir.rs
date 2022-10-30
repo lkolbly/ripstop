@@ -684,6 +684,7 @@ impl ModuleDeclaration {
 #[derive(Debug)]
 pub struct Module {
     pub name: String,
+    pub doc_comment: String,
     pub inputs: Vec<String>,
     pub outputs: Vec<String>,
     pub instantiations: HashMap<String, String>,
@@ -700,13 +701,13 @@ impl Module {
     ) -> CompileResult<Self> {
         let mut result = CompileResult::new();
 
-        let (id, in_values, out_values) = match &ast[head].data.node_type {
+        let (id, doc_comment, in_values, out_values) = match &ast[head].data.node_type {
             ASTNodeType::ModuleDeclaration {
                 id,
-                doc_comment: _,
+                doc_comment,
                 in_values,
                 out_values,
-            } => (id, in_values, out_values),
+            } => (id, doc_comment, in_values, out_values),
             _ => {
                 panic!("Tried to compile module which wasn't of type Node::ModuleDeclaration");
             }
@@ -824,6 +825,7 @@ impl Module {
 
         result.ok(Self {
             name: id.to_string(),
+            doc_comment: doc_comment.to_string(),
             inputs: in_values.iter().map(|(_, name)| name.to_string()).collect(),
             outputs: out_values
                 .iter()
