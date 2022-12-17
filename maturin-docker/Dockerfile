@@ -6,7 +6,7 @@ COPY install-maturin.sh /
 RUN sh /install-maturin.sh
 
 # Download the registry
-RUN . ~/.cargo/env && cargo install tree
+RUN . ~/.cargo/env && cargo install cargo-tree
 
 WORKDIR /work
 
