@@ -32,14 +32,50 @@ jobs:
       run: cargo test
     - name: Build release
       run: cargo build --release
-    - name: Build Python library
-      run: cd pyripstop/ && maturin build --release
 
     - name: Upload CLI
       uses: actions/upload-artifact@v3
       with:
         name: ripstop-linux
         path: target/release/cli
+
+  maturin-docker:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Docker Layer Caching
+      uses: satackey/action-docker-layer-caching@v0.0.11
+    - name: Build
+      run: cd maturin-docker/ && docker build -t ghcr.io/lkolbly/rp-maturin .
+    - name: Log in to the Container registry
+      uses: docker/login-action@f054a8b539a109f9f41c372932f1ae047eff08c9
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    - name: Push
+      run: docker push ghcr.io/lkolbly/rp-maturin:latest
+
+  linux-wheels:
+    runs-on: ubuntu-latest
+
+    needs: [maturin-docker]
+
+    container:
+      image: ghcr.io/lkolbly/rp-maturin
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.github_token }}
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Python 3.10 Wheel
+      run: /opt/python/cp310-cp310/bin/maturin build -m pyripstop/Cargo.toml -i "/opt/python/cp310-cp310/bin/python" --release --manylinux 2014
+    - name: Python 3.9 Wheel
+      run: /opt/python/cp39-cp39/bin/maturin build -m pyripstop/Cargo.toml -i "/opt/python/cp39-cp39/bin/python" --release --manylinux 2014
+    - name: Python 3.8 Wheel
+      run: /opt/python/cp38-cp38/bin/maturin build -m pyripstop/Cargo.toml -i "/opt/python/cp38-cp38/bin/python" --release --manylinux 2014
     - name: Upload Wheels
       uses: actions/upload-artifact@v3
       with:
@@ -82,6 +118,13 @@ jobs:
       with:
         name: ripstop-linux
         path: tests/cli
+    - name: Copy wheel
+      uses: actions/download-artifact@v3
+      with:
+        name: pyripstop-linux
+        path: tests/wheels
+    - name: Install wheel
+      run: pip3 install ./wheels/ripstop_lib-0.1.0-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
     - name: Rename compiler
       run: mv tests/cli/cli tests/ripstop && chmod +x tests/ripstop
     - name: List files
