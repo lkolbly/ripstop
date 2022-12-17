@@ -1,17 +1,14 @@
 FROM quay.io/pypa/manylinux2014_x86_64
 
-RUN curl --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+RUN curl https://static.rust-lang.org/dist/rust-1.66.0-x86_64-unknown-linux-gnu.tar.gz | gunzip -c | tar xv
+RUN ./rust-1.66.0-x86_64-unknown-linux-gnu/install.sh
 
 COPY install-maturin.sh /
 RUN sh /install-maturin.sh
 
 # Download the registry
-RUN . ~/.cargo/env && cargo install cargo-tree
+RUN cargo install cargo-tree
 
 WORKDIR /work
 
-ENV PATH /root/.cargo/bin:$PATH
-
 SHELL ["/bin/bash", "-c", "-l"]
-
-#ENTRYPOINT [ "bash", "-x" ]
