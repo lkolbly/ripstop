@@ -103,7 +103,7 @@ jobs:
   integration-tests:
     runs-on: ubuntu-latest
 
-    needs: [integration-test-docker, build-linux]
+    needs: [integration-test-docker, build-linux, linux-wheels]
 
     container:
       image: ghcr.io/lkolbly/rptest
