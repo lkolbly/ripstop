@@ -26,8 +26,9 @@ jobs:
           ./target/debug
           ./target/release
 
-    - name: Build
-      run: cargo build
+    - name: Install musl rust
+      run: rustup target add x86_64-unknown-linux-musl
+
     - name: Run unit tests
       run: cargo test
     - name: Build release
