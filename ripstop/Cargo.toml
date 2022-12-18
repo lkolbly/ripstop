@@ -13,3 +13,4 @@ clap = { version = "3.2.16", features = [ "derive" ] }
 subprocess = "0.2.9"
 tera = "1.17.0"
 serde = { version = "1.0.114", features = [ "derive" ] }
+thiserror = "1.0.37"

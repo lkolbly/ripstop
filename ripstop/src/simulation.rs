@@ -2,11 +2,36 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Write};
 use subprocess::Popen;
+use thiserror::Error;
 
 use crate::ast::*;
 use crate::compile::*;
+use crate::error::CompileError;
 use crate::parse::{parse, Range};
 use crate::verilog_ast::verilog_ast_to_string;
+
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("Couldn't find iverilog (is RIPSTOP_IVERILOG_BIN set?)")]
+    IverilogNotFound(#[from] subprocess::PopenError),
+
+    #[error("Error running iverilog compilation")]
+    IverilogCompileFailed(#[from] std::io::Error),
+
+    #[error("Couldn't compile simulation harness (this is a bug!)")]
+    SimulationCompileFailed(#[from] Box<dyn std::error::Error>),
+
+    #[error("Ripstop compilation error")]
+    RipstopError(Vec<CompileError>),
+}
+
+impl std::convert::From<CompileError> for Error {
+    fn from(e: CompileError) -> Self {
+        Self::RipstopError(vec![e])
+    }
+}
+
+type Result<T> = std::result::Result<T, Error>;
 
 pub struct Module {
     module_name: String,
@@ -17,27 +42,18 @@ pub struct Module {
 }
 
 impl Module {
-    pub fn new(input: std::path::PathBuf, top: &str) -> Option<Self> {
+    pub fn new(input: std::path::PathBuf, top: &str) -> Result<Self> {
         let inputpath = input.clone();
         println!("Compiling {:?}", input);
 
         let input = std::fs::read_to_string(&inputpath).unwrap();
 
-        let mut a = match parse(&input) {
-            Ok(x) => x,
-            Err(e) => {
-                eprintln!("{:?}", e);
-                return None;
-            }
-        };
+        let mut a = parse(&input)?;
         println!("{}\n", a);
 
         let result = compile_document(&mut a);
         if result.errors.len() > 0 {
-            for error in result.errors.iter() {
-                eprintln!("{:?}", error);
-            }
-            return None;
+            return Err(Error::RipstopError(result.errors));
         }
         let (mut modules, v_a) = result.result.unwrap();
 
@@ -125,7 +141,12 @@ impl Module {
         println!("Input size: {input_size} output_size: {output_size}");
 
         // Build the template
-        let tera = tera::Tera::new("templates/**/*.v").unwrap();
+        let mut tera = tera::Tera::default();
+        tera.add_raw_template(
+            "simulation_harness.v",
+            include_str!("../../templates/simulation_harness.v"),
+        )
+        .unwrap();
 
         let input_bytes = input_size / 8;
         let output_words = output_size / 32;
@@ -149,20 +170,17 @@ impl Module {
         }
 
         // Compile
+        let iverilog_path = std::env::var("RIPSTOP_IVERILOG_BIN").unwrap_or("iverilog".to_string());
         let mut p = subprocess::Popen::create(
-            &[
-                "/home/lane/Downloads/iverilog/install/bin/iverilog",
-                "sim.v",
-            ],
+            &[&iverilog_path, "sim.v"][..],
             subprocess::PopenConfig {
                 ..Default::default()
             },
-        )
-        .unwrap();
+        )?;
 
-        p.communicate(None).unwrap();
+        p.communicate(None)?;
 
-        Some(Self {
+        Ok(Self {
             module_name: module.name,
             inputs,
             outputs,
