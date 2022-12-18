@@ -31,7 +31,7 @@ jobs:
     - name: Run unit tests
       run: cargo test
     - name: Build release
-      run: cargo build --release --target x86_64-unknown-linux-musl
+      run: cargo build --release --bin cli --target x86_64-unknown-linux-musl
 
     - name: Upload CLI
       uses: actions/upload-artifact@v3
