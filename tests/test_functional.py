@@ -6,6 +6,8 @@ import sys
 from mako.template import Template
 import pytest
 
+RIPSTOP_PATH = os.environ.get("RIPSTOP_PATH")
+
 def get_files(pattern):
     files = os.listdir(".")
     files = filter(lambda s: s.endswith(pattern), files)
@@ -48,7 +50,7 @@ def compile_rp(rptest):
     try:
         shutil.copy(compiled_filename, target.filename)
     except:
-        cmd = ["./ripstop", "build", rptest, "-o", target.filename]
+        cmd = [RIPSTOP_PATH, "build", rptest, "-o", target.filename]
         print(" ".join(cmd))
         subprocess.check_output(cmd)
 
@@ -60,7 +62,7 @@ def expect_rp_compile_failure(rptest):
     """
     target = TempFile()
 
-    cmd = ["./ripstop", "build", rptest, "-o", target.filename]
+    cmd = [RIPSTOP_PATH, "build", rptest, "-o", target.filename]
     print(" ".join(cmd))
     p = subprocess.run(cmd)
     assert p.returncode != 0
