@@ -38,7 +38,7 @@ jobs:
       uses: actions/upload-artifact@v3
       with:
         name: ripstop-linux
-        path: target/release/cli
+        path: target/x86_64-unknown-linux-musl/release/cli
 
   maturin-docker:
     runs-on: ubuntu-latest
