@@ -31,7 +31,7 @@ RUN git clone --branch=${IVERILOG_VERSION} https://github.com/steveicarus/iveril
     cd && \
     rm -rf iverilog
 
-FROM python:bullseye
+FROM python:3.10-bullseye
 
 RUN pip3 install pytest
 RUN pip3 install mako
