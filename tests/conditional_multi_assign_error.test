@@ -10,4 +10,6 @@ module mux(bit a, bit b, bit sel_a, bit sel_b) -> (bit c) {
 }
 
 ### OUTPUT
-Should error
+Cannot assign to variable c multiple times on line 6 col 5:
+    if sel_b[t] {
+    ^

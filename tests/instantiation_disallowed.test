@@ -1,0 +1,23 @@
+### CODE
+
+module latch(bit data_in, bit save) -> (bit data_out) {
+    bit state;
+    if save[t] {
+        state[t] = data_in[t];
+    }
+    data_out[t] = state[t];
+}
+
+module instantiate_disallowed(bits<4> a) -> (bits<4> b) {
+    if a[t-1] == 4'd5 {
+        instantiate latch as my_latch;
+        latch.data_in[t] = 1'b0;
+        latch.save[t] = 1'b0;
+    }
+    b[t] = 4'd5;
+}
+
+### OUTPUT
+Parse error: Expected one of ["indexed_variable", "conditional"] on line 12 col 9: 
+        instantiate latch as my_latch;
+        ^

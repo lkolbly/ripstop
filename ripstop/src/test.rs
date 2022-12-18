@@ -79,7 +79,7 @@ impl TestCase {
                 })
                 .collect();
 
-            let mut inputs: HashMap<_, _> = module_spec
+            let inputs: HashMap<_, _> = module_spec
                 .inputs
                 .iter()
                 .map(|input| {
@@ -128,7 +128,7 @@ pub fn parse_tests_from_comment(module: &Module, comment: &str) -> Vec<TestCase>
     let mut current_test: Option<Vec<&str>> = None;
     for line in comment.lines() {
         if current_test.is_none() {
-            if line.contains("```test") {
+            if line == "```test" {
                 current_test = Some(vec![]);
             }
         } else {
@@ -146,4 +146,113 @@ pub fn parse_tests_from_comment(module: &Module, comment: &str) -> Vec<TestCase>
         .collect();
 
     tests
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::compile::*;
+    use crate::parse::parse;
+
+    fn get_module() -> Module {
+        let contents = "
+module comb_add(bits<4> a, bits<4> b) -> (bits<4> c) {
+    c[t] = a[t] + b[t];
+}";
+
+        let mut ast = match parse(&contents) {
+            Ok(x) => x,
+            Err(e) => {
+                eprintln!("{:?}", e);
+                std::process::exit(-1);
+            }
+        };
+
+        let result = compile_document(&mut ast);
+        if result.errors.len() > 0 {
+            for error in result.errors.iter() {
+                eprintln!("{:?}", error);
+            }
+            std::process::exit(-1);
+        }
+        let (mut modules, _) = result.result.unwrap();
+
+        let x = modules.drain(..).next().unwrap();
+        x
+    }
+
+    #[test]
+    fn test_parse_cases() {
+        let m = get_module();
+
+        let cases = parse_tests_from_comment(
+            &m,
+            "```test
+rst,  a, b, c
+  1,  0, 0, x
+  1,  0, 0, x
+  0,  1, 2, 3
+  0, 15, 0, 15
+  0,  0, 0, 0
+```",
+        );
+
+        assert_eq!(cases.len(), 1);
+
+        let case = &cases[0];
+        assert!(case.auto_reset);
+        assert_eq!(case.steps.len(), 5);
+    }
+
+    #[test]
+    fn test_parse_multiple_cases() {
+        let m = get_module();
+
+        let cases = parse_tests_from_comment(
+            &m,
+            "```test
+rst,  a, b, c
+  1,  0, 0, x
+  1,  0, 0, x
+  0,  1, 2, 3
+  0, 15, 0, 15
+  0,  0, 0, 0
+```
+
+```test
+rst,  a, b, c
+  1,  0, 0, x
+  0, 15, 0, 15
+```",
+        );
+
+        assert_eq!(cases.len(), 2);
+
+        let case = &cases[0];
+        assert!(case.auto_reset);
+        assert_eq!(case.steps.len(), 5);
+
+        let case = &cases[1];
+        assert!(case.auto_reset);
+        assert_eq!(case.steps.len(), 2);
+    }
+
+    #[test]
+    fn test_invalid_doesnt_crash() {
+        let m = get_module();
+
+        let cases = parse_tests_from_comment(
+            &m,
+            "/// ```test
+/// rst,  a, b, c
+///   1,  0, 0, x
+///   1,  0, 0, x
+///   0,  1, 2, 3
+///   0, 15, 0, 15
+///   0,  0, 0, 0
+```",
+        );
+
+        assert_eq!(cases.len(), 0);
+    }
 }

@@ -9,4 +9,5 @@ module mux(bit a, bit b, bit sel) -> (bit c) {
 }
 
 ### OUTPUT
-Should error
+thread 'main' panicked at 'Expression depends on the future!', ripstop/src/ir.rs:412:25
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

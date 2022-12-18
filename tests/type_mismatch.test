@@ -6,4 +6,10 @@ module type_mismatch(bit a, bits<2> b, bits<3> c) -> (bit a_out, bits<2> b_out, 
 }
 
 ### OUTPUT
-Should error
+Mismatched types: provided `bits<2>` but should have been `bit` on line 3 col 16:
+    a_out[t] = b[t];
+               ^
+
+Mismatched types: provided `bit` but should have been `bits<2>` on line 4 col 16:
+    b_out[t] = b[t] + a[t];
+               ^

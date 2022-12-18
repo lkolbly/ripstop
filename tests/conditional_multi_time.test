@@ -9,4 +9,5 @@ module mux(bit a, bit b, bit sel) -> (bit c) {
 }
 
 ### OUTPUT
-Should error
+thread 'main' panicked at 'A given variable must be assigned at the same time step across conditional branches', ripstop/src/ir.rs:551:29
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

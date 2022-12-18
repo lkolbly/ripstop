@@ -92,11 +92,10 @@ impl Display for StringContext {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "line {} col {}: {}\n{}\n{}^",
+            "line {} col {}:\n{}\n{}^",
             self.line,
             self.col,
-            self.node_str,
-            self.line_str,
+            self.line_str.trim_end(),
             " ".repeat(self.col - 1)
         )
     }

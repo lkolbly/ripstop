@@ -56,7 +56,38 @@ def compile_rp(rptest):
 
     return target
 
-def expect_rp_compile_failure(rptest):
+def compare_outputs(expected, actual):
+    expected = [x.strip("\n").rstrip() for x in expected.split("\n")]
+    actual = [x.strip("\n").rstrip() for x in actual.split("\n")]
+
+    # Trim the trailing empty lines
+    while len(expected[-1].strip()) == 0:
+        del expected[-1]
+    while len(actual[-1].strip()) == 0:
+        del actual[-1]
+
+    if len(expected) != len(actual):
+        print("Number of lines did not match:")
+        print("Expected:")
+        print("\n".join(expected))
+        print("END EXPECTED")
+        print()
+        print("Actual:")
+        print("\n".join(actual))
+        print("END ACTUAL")
+        assert False
+
+    equal = True
+    for i in range(len(actual)):
+        if actual[i] == expected[i]:
+            print(" {}".format(actual[i]))
+        else:
+            print("E{}".format(expected[i]))
+            print("A{}".format(actual[i]))
+            equal = False
+    assert equal
+
+def expect_rp_compile_failure(rptest, expected_output):
     """
     Generates a temporary file to stuff the generated verilog into, and compiles.
     """
@@ -64,8 +95,17 @@ def expect_rp_compile_failure(rptest):
 
     cmd = [RIPSTOP_PATH, "build", rptest, "-o", target.filename]
     print(" ".join(cmd))
-    p = subprocess.run(cmd)
+    p = subprocess.run(cmd, capture_output=True)
     assert p.returncode != 0
+
+    stderr = p.stderr.decode("utf-8")
+    if "panicked" in stderr and "RUST_BACKTRACE=1" in stderr:
+        # The compiler should *never* panic
+        print(stderr)
+        # TODO: Well, once we add errors for them
+        #assert False
+
+    compare_outputs(expected_output, p.stderr.decode("utf-8"))
 
     return target
 
@@ -193,7 +233,7 @@ def test_combined_file(rp_combinedtest_testname):
         compiled = "\n".join(segments["compiled"])
     elif "output" in segments:
         # Compiling should fail
-        expect_rp_compile_failure(codefile.filename)
+        expect_rp_compile_failure(codefile.filename, "\n".join(segments["output"]))
         return
     else:
         compiledf = compile_rp(codefile.filename)

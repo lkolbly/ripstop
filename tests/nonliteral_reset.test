@@ -5,4 +5,8 @@ module nonliteral_reset(bit x) -> (bit y) {
 }
 
 ### OUTPUT
-Should output an error
+Invalid reset value on line 3 col 17:
+    y[0] = x[t] + 1'd1;
+                ^
+
+Variable 'y' not assigned

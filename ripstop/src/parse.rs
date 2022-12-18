@@ -44,7 +44,7 @@ pub fn parse(toparse: &str) -> Result<Tree<ASTNode>, CompileError> {
         Err(e) => match e.variant {
             pest::error::ErrorVariant::ParsingError {
                 positives,
-                negatives,
+                negatives: _,
             } => {
                 return Err(CompileError::ParseError {
                     expected: positives.iter().map(|rule| format!("{:?}", rule)).collect(),
@@ -52,7 +52,7 @@ pub fn parse(toparse: &str) -> Result<Tree<ASTNode>, CompileError> {
                 });
             }
             pest::error::ErrorVariant::CustomError { message } => {
-                todo!();
+                todo!("Got custom error {}", message);
             }
         },
     };
@@ -555,5 +555,50 @@ mod test {
             println!("{:?}", literal);
             assert_eq!(&literal, expected);
         }
+    }
+
+    #[test]
+    #[ignore]
+    fn test_parse_doccomment() {
+        let ast = parse(
+            "/// ```test
+/// rst,  a, b, c
+///   1,  0, 0, x
+///   1,  0, 0, x
+///   0,  1, 2, 3
+///   0, 15, 0, 15
+///   0,  0, 0, 0
+/// ```
+module comb_add(bits<4> a, bits<4> b) -> (bits<4> c) {
+    c[t] = a[t] + b[t];
+}",
+        )
+        .unwrap();
+
+        // The AST should have one module, with one doc comment
+        let head = ast.find_head().unwrap();
+        let modules: Vec<_> = ast
+            .iter_subtree(head)
+            .filter_map(|node| match &ast.get_node(node).unwrap().data.node_type {
+                ASTNodeType::ModuleDeclaration {
+                    id, doc_comment, ..
+                } => Some((id, doc_comment)),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(modules.len(), 1);
+        assert_eq!(modules[0].0, "comb_add");
+        assert_eq!(
+            modules[0].1,
+            "```test
+rst,  a, b, c
+  1,  0, 0, x
+  1,  0, 0, x
+  0,  1, 2, 3
+  0, 15, 0, 15
+  0,  0, 0, 0
+```"
+        );
     }
 }

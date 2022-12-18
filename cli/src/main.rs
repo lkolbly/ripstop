@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand};
 use std::collections::HashMap;
-use std::io::{Read, Write};
+use std::io::Write;
 
 use ripstop::compile::*;
 use ripstop::parse::parse;
@@ -49,16 +49,15 @@ fn compile(input: std::path::PathBuf, output: Option<std::path::PathBuf>) -> i32
     let mut a = match parse(&input) {
         Ok(x) => x,
         Err(e) => {
-            eprintln!("{:?}", e);
+            eprintln!("{:?}\n", e);
             return -1;
         }
     };
 
     let result = compile_document(&mut a);
-    //let result = compile_module(&mut a);
     if result.errors.len() > 0 {
         for error in result.errors.iter() {
-            eprintln!("{:?}", error);
+            eprintln!("{:?}\n", error);
         }
         return -1;
     }
