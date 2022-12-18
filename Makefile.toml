@@ -1,0 +1,31 @@
+[env]
+CARGO_MAKE_EXTEND_WORKSPACE_FILE = true
+
+[config]
+default_to_workspace = false
+
+[tasks.wheel-docker]
+condition = { files_modified = { input = ["maturin-docker/*"] } }
+cwd = "maturin-docker"
+command = "docker"
+args = ["build", "-t", "lkolbly/maturin-docker", "."]
+
+[tasks.wheels]
+command = "docker"
+args = ["run", "--rm", "-it", "--mount", "type=volume,source=cargoregistry,target=/root/.cargo/registry", "--mount", "type=bind,source=${CARGO_MAKE_WORKING_DIRECTORY},target=/work", "lkolbly/maturin-docker", "/opt/python/cp310-cp310/bin/maturin", "build", "-m", "pyripstop/Cargo.toml", "-i", "/opt/python/cp310-cp310/bin/python", "--release", "--manylinux", "2014"]
+dependencies = ["wheel-docker"]
+
+[tasks.build-cli]
+command = "cargo"
+args = ["build", "--bin", "cli", "--target", "x86_64-unknown-linux-musl"]
+
+[tasks.test-docker]
+condition = { files_modified = { input = ["tests/docker/*"] } }
+cwd = "tests/docker"
+command = "docker"
+args = ["build", "-t", "lkolbly/rptest", "."]
+
+[tasks.test]
+dependencies = ["test-docker", "build-cli"]
+command = "docker"
+args = ["run", "-it", "--rm", "--mount", "type=bind,source=${CARGO_MAKE_WORKING_DIRECTORY},target=/work", "lkolbly/rptest", "/work/tests/go.sh"]
