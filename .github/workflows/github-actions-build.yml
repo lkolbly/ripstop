@@ -133,7 +133,7 @@ jobs:
     - name: List files
       run: ls -haltr tests/
     - name: Run tests
-      run: cd tests/ && pytest .
+      run: cd tests/ && RIPSTOP_PATH=./ripstop pytest .
 
   build-windows:
     runs-on: windows-latest
