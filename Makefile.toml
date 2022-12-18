@@ -26,6 +26,6 @@ command = "docker"
 args = ["build", "-t", "lkolbly/rptest", "."]
 
 [tasks.test]
-dependencies = ["test-docker", "build-cli"]
+dependencies = ["test-docker", "build-cli", "wheels"]
 command = "docker"
 args = ["run", "-it", "--rm", "--mount", "type=bind,source=${CARGO_MAKE_WORKING_DIRECTORY},target=/work", "lkolbly/rptest", "/work/tests/go.sh"]

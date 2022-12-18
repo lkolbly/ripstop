@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Write};
+use std::sync::Arc;
 use subprocess::Popen;
 use thiserror::Error;
 
@@ -23,6 +24,9 @@ pub enum Error {
 
     #[error("Ripstop compilation error")]
     RipstopError(Vec<CompileError>),
+
+    #[error("Error creating temporary file")]
+    TemporaryFileError(#[from] tempfile::PersistError),
 }
 
 impl std::convert::From<CompileError> for Error {
@@ -33,23 +37,36 @@ impl std::convert::From<CompileError> for Error {
 
 type Result<T> = std::result::Result<T, Error>;
 
+#[derive(Debug)]
+struct ExecutableFile(std::path::PathBuf);
+
+impl Drop for ExecutableFile {
+    fn drop(&mut self) {
+        match std::fs::remove_file(&self.0) {
+            Ok(_) => {}
+            Err(e) => {
+                eprintln!("Error removing simulation executable: {:?}", e);
+            }
+        }
+    }
+}
+
 pub struct Module {
     module_name: String,
     inputs: Vec<(String, Type, Range)>,
     outputs: Vec<(String, Type, Range)>,
     input_bytes: usize,
     output_words: usize,
+    executable_file: Arc<ExecutableFile>,
 }
 
 impl Module {
     pub fn new(input: std::path::PathBuf, top: &str) -> Result<Self> {
         let inputpath = input.clone();
-        println!("Compiling {:?}", input);
 
         let input = std::fs::read_to_string(&inputpath).unwrap();
 
         let mut a = parse(&input)?;
-        println!("{}\n", a);
 
         let result = compile_document(&mut a);
         if result.errors.len() > 0 {
@@ -63,10 +80,7 @@ impl Module {
             .next()
             .expect("Couldn't find module");
 
-        println!("Bare tree:\n\n{}\n\n", v_a);
-
         let compiled = verilog_ast_to_string(v_a.find_head().unwrap(), &v_a, 0);
-        println!("Verilog Compiled:\n\n{}", compiled);
 
         let inputs: Vec<_> = module
             .inputs
@@ -137,9 +151,6 @@ impl Module {
             output_size
         };
 
-        println!("{inputs:?} {outputs:?}");
-        println!("Input size: {input_size} output_size: {output_size}");
-
         // Build the template
         let mut tera = tera::Tera::default();
         tera.add_raw_template(
@@ -164,15 +175,20 @@ impl Module {
         context.insert("output_word_iterator", &output_word_iterator);
         let harness = tera.render("simulation_harness.v", &context).unwrap();
 
-        {
-            let mut f = std::fs::File::create("sim.v").unwrap();
-            f.write_all(harness.as_bytes()).unwrap();
-        }
+        let mut sim_file = tempfile::NamedTempFile::new()?;
+
+        sim_file.write_all(harness.as_bytes())?;
+        sim_file.flush()?;
+
+        let output_file = tempfile::NamedTempFile::new()?;
+        let (_, output_file) = output_file.keep()?;
 
         // Compile
         let iverilog_path = std::env::var("RIPSTOP_IVERILOG_BIN").unwrap_or("iverilog".to_string());
+        let sim_file_path = format!("{}", sim_file.path().display());
+        let output_file_path = format!("{}", output_file.display());
         let mut p = subprocess::Popen::create(
-            &[&iverilog_path, "sim.v"][..],
+            &[&iverilog_path, &sim_file_path, "-o", &output_file_path][..],
             subprocess::PopenConfig {
                 ..Default::default()
             },
@@ -186,6 +202,7 @@ impl Module {
             outputs,
             input_bytes: input_bytes as usize,
             output_words: output_words as usize,
+            executable_file: Arc::new(ExecutableFile(output_file)),
         })
     }
 
@@ -259,8 +276,9 @@ pub struct Instance {
 
 impl Instance {
     fn new(module: Module) -> Self {
+        let executable_path = format!("{}", module.executable_file.0.display());
         let p = subprocess::Popen::create(
-            &["./a.out"],
+            &[executable_path],
             subprocess::PopenConfig {
                 stdin: subprocess::Redirection::Pipe,
                 stdout: subprocess::Redirection::Pipe,

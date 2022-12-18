@@ -14,3 +14,4 @@ subprocess = "0.2.9"
 tera = "1.17.0"
 serde = { version = "1.0.114", features = [ "derive" ] }
 thiserror = "1.0.37"
+tempfile = "3.3.0"
