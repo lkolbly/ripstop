@@ -39,7 +39,7 @@ instantiate_statement = { "instantiate" ~ name ~ "as" ~ name ~ ";" }
 index_expression = { index_operand ~ bits_index }
 index_operand = _{ parenthetical_expression | indexed_variable }
 
-unary_operand = _{ parenthetical_expression | indexed_variable | unary_operation }
+unary_operand = _{ parenthetical_expression | index_expression | indexed_variable | unary_operation }
 unary_operation = { unary_operator ~ unary_operand }
 unary_operator = { bitwise_inverse }
 bitwise_inverse = { "~" }
