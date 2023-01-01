@@ -29,6 +29,12 @@ pub enum Error {
     TemporaryFileError(#[from] tempfile::PersistError),
 }
 
+#[derive(Debug, Error)]
+pub enum StepError {
+    #[error("Error running step")]
+    StepError(#[from] std::io::Error),
+}
+
 impl std::convert::From<CompileError> for Error {
     fn from(e: CompileError) -> Self {
         Self::RipstopError(vec![e])
@@ -36,6 +42,7 @@ impl std::convert::From<CompileError> for Error {
 }
 
 type Result<T> = std::result::Result<T, Error>;
+type StepResult<T> = std::result::Result<T, StepError>;
 
 #[derive(Debug)]
 struct ExecutableFile(std::path::PathBuf);
@@ -52,7 +59,6 @@ impl Drop for ExecutableFile {
 }
 
 pub struct Module {
-    module_name: String,
     inputs: Vec<(String, Type, Range)>,
     outputs: Vec<(String, Type, Range)>,
     input_bytes: usize,
@@ -211,7 +217,6 @@ impl Module {
         p.communicate(None)?;
 
         Ok(Self {
-            module_name: module.name,
             inputs,
             outputs,
             input_bytes: input_bytes as usize,
@@ -313,39 +318,40 @@ impl Instance {
         Self { module, proc: p }
     }
 
-    pub fn reset_step(&mut self, input: Values) -> Values {
-        self.send_command(109);
+    pub fn reset_step(&mut self, input: Values) -> StepResult<Values> {
+        self.send_command(109)?;
 
         let input = input.to_bytes(self.module.input_bytes, &self.module.inputs[..]);
-        self.stdin().write_all(&input[..]);
-        self.stdin().flush();
+        self.stdin().write_all(&input[..])?;
+        self.stdin().flush()?;
 
         // Reset
-        self.send_command(106);
-        self.send_command(104);
-        let o = self.read_outputs();
-        self.send_command(108);
-        o
+        self.send_command(106)?;
+        self.send_command(104)?;
+        let o = self.read_outputs()?;
+        self.send_command(108)?;
+        Ok(o)
     }
 
-    pub fn step(&mut self, input: Values) -> Values {
-        self.send_command(109);
+    pub fn step(&mut self, input: Values) -> StepResult<Values> {
+        self.send_command(109)?;
 
         let input = input.to_bytes(self.module.input_bytes, &self.module.inputs[..]);
-        self.stdin().write_all(&input[..]);
-        self.stdin().flush();
+        self.stdin().write_all(&input[..])?;
+        self.stdin().flush()?;
 
         // Clear reset
-        self.send_command(107);
-        self.send_command(104);
-        let o = self.read_outputs();
-        self.send_command(108);
-        o
+        self.send_command(107)?;
+        self.send_command(104)?;
+        let o = self.read_outputs()?;
+        self.send_command(108)?;
+        Ok(o)
     }
 
-    pub fn finish(mut self) {
-        self.send_command(105);
-        self.proc.terminate().unwrap();
+    pub fn finish(mut self) -> StepResult<()> {
+        self.send_command(105)?;
+        self.proc.terminate()?;
+        Ok(())
     }
 
     fn stdin(&self) -> &File {
@@ -356,19 +362,20 @@ impl Instance {
         self.proc.stdout.as_ref().unwrap()
     }
 
-    fn send_command(&self, cmd: u8) {
-        self.stdin().write_all(&[cmd]).unwrap();
-        self.stdin().flush().unwrap();
+    fn send_command(&self, cmd: u8) -> StepResult<()> {
+        self.stdin().write_all(&[cmd])?;
+        self.stdin().flush()?;
+        Ok(())
     }
 
-    fn read_outputs(&self) -> Values {
+    fn read_outputs(&self) -> StepResult<Values> {
         let mut v = vec![0u32; self.module.output_words];
         for i in 0..self.module.output_words {
             let mut word_value = [0u8; 4];
-            self.stdout().read_exact(&mut word_value).unwrap();
+            self.stdout().read_exact(&mut word_value)?;
             v[i] = u32::from_le_bytes(word_value);
         }
-        Values::from_words(&v, &self.module.outputs)
+        Ok(Values::from_words(&v, &self.module.outputs))
     }
 }
 

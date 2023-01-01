@@ -67,20 +67,22 @@ impl SimulationInstance {
         })
     }
 
-    fn reset_step(&mut self, input: HashMap<String, u32>) -> HashMap<String, u32> {
+    fn reset_step(&mut self, input: HashMap<String, u32>) -> PyResult<HashMap<String, u32>> {
         self.instance
             .as_mut()
             .unwrap()
             .reset_step(ripstop::simulation::Values(input))
-            .0
+            .map_err(|e| PyRuntimeError::new_err(format!("Error running step: {}", e)))
+            .map(|x| x.0)
     }
 
-    fn step(&mut self, input: HashMap<String, u32>) -> HashMap<String, u32> {
+    fn step(&mut self, input: HashMap<String, u32>) -> PyResult<HashMap<String, u32>> {
         self.instance
             .as_mut()
             .unwrap()
             .step(ripstop::simulation::Values(input))
-            .0
+            .map_err(|e| PyRuntimeError::new_err(format!("Error running step: {}", e)))
+            .map(|x| x.0)
     }
 
     fn __enter__(&mut self) -> PyResult<()> {
@@ -94,7 +96,11 @@ impl SimulationInstance {
         _value: Option<&PyAny>,
         _traceback: Option<&PyAny>,
     ) -> PyResult<bool> {
-        self.instance.take().unwrap().finish();
+        self.instance
+            .take()
+            .unwrap()
+            .finish()
+            .map_err(|e| PyRuntimeError::new_err(format!("Couldn't stop instance: {}", e)))?;
         Ok(false)
     }
 }

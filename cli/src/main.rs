@@ -144,9 +144,9 @@ fn main() {
                 for step in test.steps.iter() {
                     print!(".");
                     let outputs = if step.reset {
-                        instance.reset_step(step.inputs.clone())
+                        instance.reset_step(step.inputs.clone()).unwrap()
                     } else {
-                        instance.step(step.inputs.clone())
+                        instance.step(step.inputs.clone()).unwrap()
                     };
                     for (k, v) in step.expected_outputs.0.iter() {
                         let actual_value = outputs.0.get(k).unwrap();
@@ -164,21 +164,25 @@ fn main() {
                 } else {
                     println!("FAIL");
                 }
-                instance.finish();
+                instance.finish().unwrap();
             }
         }
         Commands::Simulate { input, top } => {
             let m = ripstop::simulation::Module::new::<&'static str>(input, &top, None).unwrap();
             let mut instance = m.instantiate();
 
-            instance.reset_step(ripstop::simulation::Values(HashMap::from([
-                ("data_in".to_string(), 0),
-                ("save".to_string(), 0),
-            ])));
-            instance.reset_step(ripstop::simulation::Values(HashMap::from([
-                ("data_in".to_string(), 0),
-                ("save".to_string(), 0),
-            ])));
+            instance
+                .reset_step(ripstop::simulation::Values(HashMap::from([
+                    ("data_in".to_string(), 0),
+                    ("save".to_string(), 0),
+                ])))
+                .unwrap();
+            instance
+                .reset_step(ripstop::simulation::Values(HashMap::from([
+                    ("data_in".to_string(), 0),
+                    ("save".to_string(), 0),
+                ])))
+                .unwrap();
 
             for _ in 0..10 {
                 println!(
@@ -220,7 +224,7 @@ fn main() {
                 ])))
             ); // save 0
 
-            instance.finish();
+            instance.finish().unwrap();
         }
     }
 }
