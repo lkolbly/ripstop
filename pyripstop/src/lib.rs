@@ -25,7 +25,7 @@ impl std::convert::From<Error> for PyErr {
                 format!("Couldn't run iverilog: {}", e)
             }
             ripstop::simulation::Error::IverilogNotFound(e) => {
-                format!("Couldn't find iverilog (set the PYRIPSTOP_IVERILOG_BIN environment variable): {}", e)
+                format!("Couldn't find iverilog (set the RIPSTOP_IVERILOG_BIN environment variable): {}", e)
             }
             ripstop::simulation::Error::RipstopError(e) => {
                 let mut s = String::new();
