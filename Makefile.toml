@@ -29,3 +29,8 @@ args = ["build", "-t", "lkolbly/rptest", "."]
 dependencies = ["test-docker", "build-cli", "wheels"]
 command = "docker"
 args = ["run", "-it", "--rm", "--mount", "type=bind,source=${CARGO_MAKE_WORKING_DIRECTORY},target=/work", "lkolbly/rptest", "/work/tests/go.sh"]
+
+[tasks.book]
+cwd = "book"
+command = "mdbook"
+args = ["build"]
