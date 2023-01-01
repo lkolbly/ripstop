@@ -130,8 +130,12 @@ fn main() {
             );
 
             for (i, (module, test)) in tests.iter().enumerate() {
-                let sim_module = ripstop::simulation::Module::new(input.clone(), &module.name)
-                    .expect("Couldn't compile simulation module");
+                let sim_module = ripstop::simulation::Module::new::<&'static str>(
+                    input.clone(),
+                    &module.name,
+                    None,
+                )
+                .expect("Couldn't compile simulation module");
                 let mut instance = sim_module.instantiate();
 
                 print!("{}/{}", module.name, i);
@@ -164,7 +168,7 @@ fn main() {
             }
         }
         Commands::Simulate { input, top } => {
-            let m = ripstop::simulation::Module::new(input, &top).unwrap();
+            let m = ripstop::simulation::Module::new::<&'static str>(input, &top, None).unwrap();
             let mut instance = m.instantiate();
 
             instance.reset_step(ripstop::simulation::Values(HashMap::from([

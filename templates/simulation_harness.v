@@ -30,8 +30,10 @@ module main();
     end
 
     initial begin
-        $dumpfile("dump.vcd");
-        $dumpvars(0, dut);
+        {% if output_dumpfile %}
+            $dumpfile("{{dumpfile}}");
+            $dumpvars(0, dut);
+        {% endif %}
 
         clk = 0;
         rst = 1;

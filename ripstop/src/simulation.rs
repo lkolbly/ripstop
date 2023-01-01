@@ -58,13 +58,19 @@ pub struct Module {
     input_bytes: usize,
     output_words: usize,
     executable_file: Arc<ExecutableFile>,
+    dumpfile: Option<std::path::PathBuf>,
 }
 
 impl Module {
-    pub fn new(input: std::path::PathBuf, top: &str) -> Result<Self> {
+    pub fn new<P: AsRef<std::path::Path>>(
+        input: std::path::PathBuf,
+        top: &str,
+        dumpfile: Option<P>,
+    ) -> Result<Self> {
         let inputpath = input.clone();
 
-        let input = std::fs::read_to_string(&inputpath).unwrap();
+        let input = std::fs::read_to_string(&inputpath)
+            .map_err(|e| Error::SimulationCompileFailed(Box::new(e)))?;
 
         let mut a = parse(&input)?;
 
@@ -173,6 +179,14 @@ impl Module {
         context.insert("input_bytes", &input_bytes);
         context.insert("output_words", &output_words);
         context.insert("output_word_iterator", &output_word_iterator);
+
+        if let Some(dumpfile) = &dumpfile {
+            context.insert("output_dumpfile", &true);
+            context.insert("dumpfile", dumpfile.as_ref());
+        } else {
+            context.insert("output_dumpfile", &false);
+        }
+
         let harness = tera.render("simulation_harness.v", &context).unwrap();
 
         let mut sim_file = tempfile::NamedTempFile::new()?;
@@ -203,6 +217,7 @@ impl Module {
             input_bytes: input_bytes as usize,
             output_words: output_words as usize,
             executable_file: Arc::new(ExecutableFile(output_file)),
+            dumpfile: dumpfile.map(|p| p.as_ref().to_path_buf()),
         })
     }
 
@@ -289,9 +304,11 @@ impl Instance {
 
         // iverilog prints out this exact string when we open the dumpfile
         // If we could make it not do that, that'd be great
-        let hdr = "VCD info: dumpfile dump.vcd opened for output.\n";
-        let mut v = vec![0; hdr.len()];
-        p.stdout.as_ref().unwrap().read_exact(&mut v).unwrap();
+        if module.dumpfile.is_some() {
+            let hdr = "VCD info: dumpfile dump.vcd opened for output.\n";
+            let mut v = vec![0; hdr.len()];
+            p.stdout.as_ref().unwrap().read_exact(&mut v).unwrap();
+        }
 
         Self { module, proc: p }
     }

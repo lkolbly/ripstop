@@ -1,3 +1,4 @@
+use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyType};
 use std::collections::HashMap;
@@ -15,15 +16,55 @@ struct SimulationInstance {
     instance: Option<ripstop::simulation::Instance>,
 }
 
+struct Error(ripstop::simulation::Error);
+
+impl std::convert::From<Error> for PyErr {
+    fn from(e: Error) -> Self {
+        let message = match e.0 {
+            ripstop::simulation::Error::IverilogCompileFailed(e) => {
+                format!("Couldn't run iverilog: {}", e)
+            }
+            ripstop::simulation::Error::IverilogNotFound(e) => {
+                format!("Couldn't find iverilog (set the PYRIPSTOP_IVERILOG_BIN environment variable): {}", e)
+            }
+            ripstop::simulation::Error::RipstopError(e) => {
+                let mut s = String::new();
+                s.push_str("Couldn't compile ripstop: ");
+                for err in e.iter() {
+                    s.push_str(&format!("{:?}", err));
+                }
+                s
+            }
+            ripstop::simulation::Error::SimulationCompileFailed(e) => {
+                format!("Simulation compilation failed: {}", e)
+            }
+            ripstop::simulation::Error::TemporaryFileError(e) => {
+                format!("Couldn't create temporary file: {}", e)
+            }
+        };
+        PyRuntimeError::new_err(message)
+    }
+}
+
+impl std::convert::From<ripstop::simulation::Error> for Error {
+    fn from(err: ripstop::simulation::Error) -> Self {
+        Self(err)
+    }
+}
+
 #[pymethods]
 impl SimulationInstance {
     #[new]
-    fn new(path: String, top: String) -> Self {
-        let module =
-            ripstop::simulation::Module::new(std::path::PathBuf::from(path), &top).unwrap();
-        Self {
+    fn new(path: String, top: String) -> PyResult<Self> {
+        let module = ripstop::simulation::Module::new::<&'static str>(
+            std::path::PathBuf::from(path),
+            &top,
+            None,
+        )
+        .map_err(|e| Error(e))?;
+        Ok(Self {
             instance: Some(module.instantiate()),
-        }
+        })
     }
 
     fn reset_step(&mut self, input: HashMap<String, u32>) -> HashMap<String, u32> {
