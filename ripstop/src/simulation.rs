@@ -58,9 +58,64 @@ impl Drop for ExecutableFile {
     }
 }
 
+/// Represents a mapping of some set of typed variables to a linear set of bits
+struct LinearVariableMapping {
+    variables: Vec<(String, Type, Range)>,
+}
+
+impl LinearVariableMapping {
+    fn new(mut variables: Vec<(String, Type)>) -> Self {
+        let x: Vec<_> = variables
+            .drain(..)
+            .scan(0, |state, (name, vartype)| {
+                let low = *state;
+                let high = *state + vartype.bit_size() - 1;
+                *state = high + 1;
+                Some((
+                    name,
+                    vartype,
+                    Range {
+                        low: low as u32,
+                        high: high as u32,
+                    },
+                ))
+            })
+            .collect();
+        Self { variables: x }
+    }
+
+    fn from_variable_names(variable_table: &HashMap<String, Type>, variables: &[String]) -> Self {
+        let variables: Vec<_> = variables
+            .iter()
+            .map(|varname| {
+                let t = variable_table.get(varname).unwrap();
+                (varname.to_string(), *t)
+            })
+            .collect();
+        Self::new(variables)
+    }
+
+    /// Returns the number of bits needed to represent this mapping, rounded
+    /// to the correct number of words
+    fn get_size_bits(&self) -> usize {
+        let bits = if self.variables.len() == 0 {
+            0
+        } else {
+            self.variables[self.variables.len() - 1].2.high as usize + 1
+        };
+        if bits == 0 {
+            32
+        } else if bits % 32 != 0 {
+            bits + 32 - bits % 32
+        } else {
+            bits
+        }
+    }
+}
+
 pub struct Module {
-    inputs: Vec<(String, Type, Range)>,
-    outputs: Vec<(String, Type, Range)>,
+    inputs: LinearVariableMapping,
+    outputs: LinearVariableMapping,
     input_bytes: usize,
     output_words: usize,
     executable_file: Arc<ExecutableFile>,
@@ -94,74 +149,11 @@ impl Module {
 
         let compiled = verilog_ast_to_string(v_a.find_head().unwrap(), &v_a, 0);
 
-        let inputs: Vec<_> = module
-            .inputs
-            .iter()
-            .map(|input| {
-                let t = module.variables.get(input).unwrap();
-                (input.to_string(), *t)
-            })
-            .scan(0, |state, (name, vartype)| {
-                let low = *state;
-                let high = *state + vartype.bit_size() - 1;
-                *state = high + 1;
-                Some((
-                    name,
-                    vartype,
-                    Range {
-                        low: low as u32,
-                        high: high as u32,
-                    },
-                ))
-            })
-            .collect();
-        let outputs: Vec<_> = module
-            .outputs
-            .iter()
-            .map(|output| {
-                let t = module.variables.get(output).unwrap();
-                (output.to_string(), *t)
-            })
-            .scan(0, |state, (name, vartype)| {
-                let low = *state;
-                let high = *state + vartype.bit_size() - 1;
-                *state = high + 1;
-                Some((
-                    name,
-                    vartype,
-                    Range {
-                        low: low as u32,
-                        high: high as u32,
-                    },
-                ))
-            })
-            .collect();
-
-        let input_size = if inputs.len() == 0 {
-            0
-        } else {
-            inputs[inputs.len() - 1].2.high + 1
-        };
-        let output_size = if outputs.len() == 0 {
-            0
-        } else {
-            outputs[outputs.len() - 1].2.high + 1
-        };
-
-        let input_size = if input_size == 0 {
-            32
-        } else if input_size % 32 != 0 {
-            input_size + 32 - input_size % 32
-        } else {
-            input_size
-        };
-        let output_size = if output_size == 0 {
-            32
-        } else if output_size % 32 != 0 {
-            output_size + 32 - output_size % 32
-        } else {
-            output_size
-        };
+        let inputs = LinearVariableMapping::from_variable_names(&module.variables, &module.inputs);
+        let outputs =
+            LinearVariableMapping::from_variable_names(&module.variables, &module.outputs);
+        let input_size = inputs.get_size_bits();
+        let output_size = outputs.get_size_bits();
 
         // Build the template
         let mut tera = tera::Tera::default();
@@ -173,13 +165,13 @@ impl Module {
 
         let input_bytes = input_size / 8;
         let output_words = output_size / 32;
-        let output_word_iterator: Vec<u32> = (0..output_words).collect();
+        let output_word_iterator: Vec<u32> = (0..output_words as u32).collect();
 
         let mut context = tera::Context::new();
         context.insert("compiled", &compiled);
         context.insert("module_name", &module.name);
-        context.insert("inputs", &inputs);
-        context.insert("outputs", &outputs);
+        context.insert("inputs", &inputs.variables);
+        context.insert("outputs", &outputs.variables);
         context.insert("input_size", &input_size);
         context.insert("output_size", &output_size);
         context.insert("input_bytes", &input_bytes);
@@ -235,10 +227,11 @@ impl Module {
 pub struct Values(pub HashMap<String, u32>);
 
 impl Values {
-    fn to_bytes(&self, input_bytes: usize, mapping: &[(String, Type, Range)]) -> Vec<u8> {
+    fn to_bytes(&self, input_bytes: usize, mapping: &LinearVariableMapping) -> Vec<u8> {
         let mut input_bytes = vec![0u8; input_bytes];
         self.0.iter().for_each(|(k, v)| {
             let (_, _, r) = mapping
+                .variables
                 .iter()
                 .filter(|(name, _, _)| name == k)
                 .next()
@@ -262,9 +255,9 @@ impl Values {
         input_bytes
     }
 
-    fn from_words(input: &[u32], mapping: &[(String, Type, Range)]) -> Self {
+    fn from_words(input: &[u32], mapping: &LinearVariableMapping) -> Self {
         let mut result = HashMap::new();
-        mapping.iter().for_each(|(name, _, range)| {
+        mapping.variables.iter().for_each(|(name, _, range)| {
             let lo_word = range.low / 32;
             let hi_word = range.high / 32;
 
@@ -321,7 +314,7 @@ impl Instance {
     pub fn reset_step(&mut self, input: Values) -> StepResult<Values> {
         self.send_command(109)?;
 
-        let input = input.to_bytes(self.module.input_bytes, &self.module.inputs[..]);
+        let input = input.to_bytes(self.module.input_bytes, &self.module.inputs);
         self.stdin().write_all(&input[..])?;
         self.stdin().flush()?;
 
@@ -336,7 +329,7 @@ impl Instance {
     pub fn step(&mut self, input: Values) -> StepResult<Values> {
         self.send_command(109)?;
 
-        let input = input.to_bytes(self.module.input_bytes, &self.module.inputs[..]);
+        let input = input.to_bytes(self.module.input_bytes, &self.module.inputs);
         self.stdin().write_all(&input[..])?;
         self.stdin().flush()?;
 
