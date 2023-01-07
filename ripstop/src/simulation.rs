@@ -84,7 +84,7 @@ impl Module {
         if result.errors.len() > 0 {
             return Err(Error::RipstopError(result.errors));
         }
-        let (mut modules, v_a) = result.result.unwrap();
+        let (_, mut modules, v_a) = result.result.unwrap();
 
         let module = modules
             .drain(..)

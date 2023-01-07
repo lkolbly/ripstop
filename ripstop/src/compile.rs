@@ -534,7 +534,9 @@ fn compile_var_ref_from_string(
     Ok(tree)
 }
 
-pub fn compile_document(tree: &mut Tree<ASTNode>) -> CompileResult<(Vec<Module>, Tree<VNode>)> {
+pub fn compile_document(
+    tree: &mut Tree<ASTNode>,
+) -> CompileResult<(Vec<ModuleDeclaration>, Vec<Module>, Tree<VNode>)> {
     let mut result = CompileResult::new();
 
     let declarations = logerror!(result, get_module_declarations(tree));
@@ -564,7 +566,7 @@ pub fn compile_document(tree: &mut Tree<ASTNode>) -> CompileResult<(Vec<Module>,
         }
     }
 
-    result.ok((modules, vast));
+    result.ok((declarations, modules, vast));
     result
 }
 
@@ -1100,4 +1102,65 @@ fn variable_name_relative(var_id: &str, index: i64) -> String {
     } else {
         format!("{}_{}", var_id, index.to_string().replace('-', "neg"))
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct ExternalModule {
+    pub module_name: String,
+    pub instance_path: Vec<String>,
+}
+
+fn recursive_external_module_helper(
+    declarations: &[ModuleDeclaration],
+    modules: &[Module],
+    module: &Module,
+    path: &[String],
+) -> Vec<ExternalModule> {
+    let mut result = vec![];
+    for (instance_name, module_name) in module.instantiations.iter() {
+        let declaration = declarations
+            .iter()
+            .find(|decl| &decl.name == module_name)
+            .expect("Couldn't find module declaration");
+
+        let mut path = path.to_vec();
+        path.push(instance_name.to_string());
+
+        if declaration.is_extern {
+            result.push(ExternalModule {
+                module_name: module_name.to_string(),
+                instance_path: path,
+            });
+        } else {
+            let module = modules
+                .iter()
+                .find(|module| &module.name == module_name)
+                .expect("Couldn't find non-extern module");
+            let mut v = recursive_external_module_helper(declarations, modules, module, &path);
+            result.append(&mut v);
+        }
+    }
+    result
+}
+
+/// Enumerates all external modules required in order to run the given top module.
+pub fn collect_external_modules(
+    top: &str,
+    declarations: &[ModuleDeclaration],
+    modules: &[Module],
+) -> Result<Vec<ExternalModule>, ()> {
+    // Find the top
+    let top = match modules.iter().filter(|module| module.name == top).next() {
+        Some(x) => x,
+        None => {
+            return Err(());
+        }
+    };
+
+    Ok(recursive_external_module_helper(
+        declarations,
+        modules,
+        top,
+        &[],
+    ))
 }

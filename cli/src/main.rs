@@ -39,6 +39,15 @@ enum Commands {
         #[clap(value_parser)]
         input: std::path::PathBuf,
     },
+
+    /// Enumerates the external modules referenced (directly or indirectly) by the given top module
+    EnumerateExtern {
+        #[clap(value_parser)]
+        input: std::path::PathBuf,
+
+        #[clap(value_parser)]
+        top: String,
+    },
 }
 
 fn compile(input: std::path::PathBuf, output: Option<std::path::PathBuf>) -> i32 {
@@ -61,7 +70,7 @@ fn compile(input: std::path::PathBuf, output: Option<std::path::PathBuf>) -> i32
         }
         return -1;
     }
-    let (_, v_a) = result.result.unwrap();
+    let (_, _, v_a) = result.result.unwrap();
 
     let compiled = verilog_ast_to_string(v_a.find_head().unwrap(), &v_a, 0);
 
@@ -111,7 +120,7 @@ fn main() {
                 }
                 std::process::exit(-1);
             }
-            let (modules, _) = result.result.unwrap();
+            let (_, modules, _) = result.result.unwrap();
 
             // Find all the tests in all the modules
             let tests: Vec<_> = modules
@@ -225,6 +234,40 @@ fn main() {
             ); // save 0
 
             instance.finish().unwrap();
+        }
+        Commands::EnumerateExtern { input, top } => {
+            let inputpath = input.clone();
+
+            let input = std::fs::read_to_string(&inputpath).unwrap();
+
+            let mut a = match parse(&input) {
+                Ok(x) => x,
+                Err(e) => {
+                    eprintln!("{:?}\n", e);
+                    std::process::exit(-1);
+                }
+            };
+
+            let result = compile_document(&mut a);
+            if result.errors.len() > 0 {
+                for error in result.errors.iter() {
+                    eprintln!("{:?}\n", error);
+                }
+                std::process::exit(-1);
+            }
+            let (declarations, modules, _) = result.result.unwrap();
+
+            let extern_modules = match collect_external_modules(&top, &declarations, &modules) {
+                Ok(x) => x,
+                Err(_) => {
+                    eprintln!("Could not find top module {}", top);
+                    std::process::exit(-1);
+                }
+            };
+            println!("Found {} external modules", extern_modules.len());
+            for m in extern_modules.iter() {
+                println!("{} is {}", m.instance_path.join("."), m.module_name);
+            }
         }
     }
 }
