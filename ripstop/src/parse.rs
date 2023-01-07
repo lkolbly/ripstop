@@ -101,6 +101,19 @@ pub fn parse(toparse: &str) -> Result<Tree<ASTNode>, CompileError> {
                     out_values,
                 })
             }
+            Rule::extern_module_declaration => {
+                let (doc_comment, id) = consume_doc_comments(&mut inner_rules);
+                let id = id.as_str().to_string();
+
+                let in_values = parse_variable_declarations(inner_rules.next().unwrap());
+                let out_values = parse_variable_declarations(inner_rules.next().unwrap());
+                Some(ASTNodeType::ExternModuleDeclaration {
+                    id,
+                    doc_comment,
+                    in_values,
+                    out_values,
+                })
+            }
             Rule::assignment => Some(ASTNodeType::Assign),
             Rule::indexed_variable => Some(ASTNodeType::VariableReference {
                 var_id: inner_rules.next().unwrap().as_str().to_string(),

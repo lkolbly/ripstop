@@ -1,5 +1,6 @@
-document = { SOI ~ module_declaration* ~ EOI }
+document = { SOI ~ (module_declaration | extern_module_declaration)* ~ EOI }
 module_declaration = { doc_comment* ~ "module" ~ name ~ variable_declaration_list ~ "->" ~ variable_declaration_list ~ block }
+extern_module_declaration = { doc_comment* ~ "extern" ~ "module" ~ name ~ variable_declaration_list ~ "->" ~ variable_declaration_list ~ ";" }
 
 doc_comment = @{ "///" ~ (!NEWLINE ~ ANY)* ~ NEWLINE }
 

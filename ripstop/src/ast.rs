@@ -133,6 +133,12 @@ pub enum ASTNodeType {
         in_values: Vec<(Type, String)>,
         out_values: Vec<(Type, String)>,
     },
+    ExternModuleDeclaration {
+        id: String,
+        doc_comment: String,
+        in_values: Vec<(Type, String)>,
+        out_values: Vec<(Type, String)>,
+    },
     ModuleInstantiation {
         module: String,
         instance: String,

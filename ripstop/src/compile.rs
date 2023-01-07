@@ -549,11 +549,18 @@ pub fn compile_document(tree: &mut Tree<ASTNode>) -> CompileResult<(Vec<Module>,
     let children: Vec<_> = tree.get_node(head).unwrap().children.to_owned();
     let mut modules = vec![];
     for &child in children.iter() {
-        if let Some((module, mut module_vast)) =
-            noncriterr!(result, compile_module(tree, child, &declarations))
-        {
-            modules.push(module);
-            singleerror!(result, vast.append_tree(v_head, &mut module_vast));
+        match &tree.get_node(child).unwrap().data.node_type {
+            ASTNodeType::ModuleDeclaration { .. } => {
+                if let Some((module, mut module_vast)) =
+                    noncriterr!(result, compile_module(tree, child, &declarations))
+                {
+                    modules.push(module);
+                    singleerror!(result, vast.append_tree(v_head, &mut module_vast));
+                }
+            }
+            _ => {
+                // Ignore extern modules
+            }
         }
     }
 
@@ -578,6 +585,17 @@ fn get_module_declarations(tree: &mut Tree<ASTNode>) -> CompileResult<Vec<Module
                 doc_comment: _doc_comment,
                 in_values: _in_values,
                 out_values: _out_values,
+            } => {
+                if let Some(module) = noncriterr!(result, ModuleDeclaration::from_ast(tree, *child))
+                {
+                    modules.push(module);
+                }
+            }
+            ASTNodeType::ExternModuleDeclaration {
+                id,
+                doc_comment,
+                in_values,
+                out_values,
             } => {
                 if let Some(module) = noncriterr!(result, ModuleDeclaration::from_ast(tree, *child))
                 {

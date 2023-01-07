@@ -12,5 +12,5 @@ module instantiation(bits<4> a) -> (bits<4> b) {
 }
 
 ### OUTPUT
-thread 'main' panicked at 'Cannot have multiple instantiations with name my_shifter!', ripstop/src/ir.rs:727:17
+thread 'main' panicked at 'Cannot have multiple instantiations with name my_shifter!', ripstop/src/ir.rs:735:17
 note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

@@ -652,6 +652,7 @@ impl Block {
 #[derive(Debug)]
 pub struct ModuleDeclaration {
     pub name: String,
+    pub is_extern: bool,
     pub inputs: Vec<(Type, String)>,
     pub outputs: Vec<(Type, String)>,
 }
@@ -660,13 +661,19 @@ impl ModuleDeclaration {
     pub fn from_ast(ast: &Tree<ASTNode>, node: NodeId) -> CompileResult<Self> {
         let mut result = CompileResult::new();
 
-        let (id, in_values, out_values) = match &ast[node].data.node_type {
+        let (id, is_extern, in_values, out_values) = match &ast[node].data.node_type {
             ASTNodeType::ModuleDeclaration {
                 id,
                 doc_comment: _,
                 in_values,
                 out_values,
-            } => (id, in_values, out_values),
+            } => (id, false, in_values, out_values),
+            ASTNodeType::ExternModuleDeclaration {
+                id,
+                doc_comment: _,
+                in_values,
+                out_values,
+            } => (id, true, in_values, out_values),
             _ => {
                 panic!("Tried to compile module which wasn't of type Node::ModuleDeclaration");
             }
@@ -674,6 +681,7 @@ impl ModuleDeclaration {
 
         result.ok(Self {
             name: id.to_string(),
+            is_extern,
             inputs: in_values.to_owned(),
             outputs: out_values.to_owned(),
         });
