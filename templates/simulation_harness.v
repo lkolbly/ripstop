@@ -3,13 +3,6 @@
 {{compiled}}
 
 
-module add(input [15:0] a, input[15:0] b, output[15:0] result, input clk, input rst);
-    reg[15:0] result_tmp;
-
-    assign result = result_tmp;
-endmodule
-
-
 module main();
     integer c;
     integer continue;
@@ -72,8 +65,6 @@ module main();
                 $fwrite('h8000_0002, "Unexpected command %d", c);
                 continue = 0;
             end
-
-            dut.add_instance.result_tmp = dut.add_instance.a + dut.add_instance.b;
         end
 
         $finish;
