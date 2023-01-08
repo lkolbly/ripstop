@@ -219,6 +219,8 @@ pub struct Module {
     external_input_words: usize,
     executable_file: Arc<ExecutableFile>,
     dumpfile: Option<std::path::PathBuf>,
+    simulators: HashMap<String, Box<dyn ModuleSimulator + Send>>,
+    external_modules: Vec<ShimModuleDefinition>,
 }
 
 impl Module {
@@ -226,7 +228,7 @@ impl Module {
         input: std::path::PathBuf,
         top: &str,
         dumpfile: Option<P>,
-        simulators: HashMap<String, Box<dyn ModuleSimulator>>,
+        simulators: HashMap<String, Box<dyn ModuleSimulator + Send>>,
     ) -> Result<Self> {
         let inputpath = input.clone();
 
@@ -373,6 +375,8 @@ impl Module {
             external_inputs,
             executable_file: Arc::new(ExecutableFile(output_file)),
             dumpfile: dumpfile.map(|p| p.as_ref().to_path_buf()),
+            simulators,
+            external_modules,
         })
     }
 
@@ -546,15 +550,34 @@ impl Instance {
         let external_inputs = Values::from_words(&v, &self.module.external_inputs);
         println!("{:?}", v);
         println!("{:#?}", external_inputs);
+        println!("{:#?}", self.module.external_modules);
+
+        let mut eo = Values(HashMap::new());
+        for extern_module in self.module.external_modules.iter() {
+            let path = extern_module.path.join(".");
+
+            // Collect all of the inputs
+            let mut inputs = HashMap::new();
+            for input in extern_module.inputs.iter() {
+                let path = format!("{}.{}", path, input.0);
+                inputs.insert(input.0.clone(), *external_inputs.0.get(&path).unwrap());
+            }
+            let inputs = Values(inputs);
+            println!("{} {:?}", path, inputs);
+
+            // Get the simulator
+            let sim = self.module.simulators.get(&path).unwrap();
+            let outputs = sim.step(inputs);
+            println!("{:?}", outputs);
+
+            for (out_name, out_value) in outputs.0.iter() {
+                // TODO: We need to check that the given variable actually exists
+                eo.0.insert(format!("{}.__rp_{}", path, out_name), *out_value);
+            }
+        }
 
         // Set the external module data
         self.stdin().write_all(&[111])?;
-        let mut eo = Values(HashMap::new());
-        eo.0.insert(
-            "add_instance.__rp_result".to_string(),
-            external_inputs.0.get("add_instance.a").unwrap()
-                + external_inputs.0.get("add_instance.b").unwrap(),
-        );
         let eo = eo.to_bytes(
             self.module.external_output_bytes,
             &self.module.external_outputs,
@@ -711,5 +734,13 @@ mod test {
                 ],
             ]
         );
+    }
+
+    #[test]
+    fn test_empty() {
+        // When the mapping is empty, we should still output one word
+        let mapping = LinearVariableMapping::new(vec![]);
+        let expected: Vec<Vec<NamedVariableInWord>> = vec![vec![]];
+        assert_eq!(mapping.to_words(), expected);
     }
 }

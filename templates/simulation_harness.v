@@ -85,6 +85,9 @@ module main();
             end else if (c == 110) begin
                 {% for word in external_inputs %}
                 $fwrite('h8000_0001, "%u", {
+                    {% if not word %}
+                    32'd0
+                    {% endif %}
                     {% for var in word -%}
                     dut.{{var.name}}[{{var.var_section.high}}:{{var.var_section.low}}]{% if not loop.last %},{% endif %}
                     {% endfor %}

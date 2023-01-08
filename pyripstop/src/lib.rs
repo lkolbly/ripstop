@@ -52,15 +52,54 @@ impl std::convert::From<ripstop::simulation::Error> for Error {
     }
 }
 
+struct PythonModuleSim {
+    object: Py<PyAny>,
+}
+
+impl ripstop::simulation::ModuleSimulator for PythonModuleSim {
+    fn step(&self, inputs: ripstop::simulation::Values) -> ripstop::simulation::Values {
+        let x = Python::with_gil(|py| {
+            let res = self.object.call(py, (inputs.0,), None);
+            let res = res.unwrap();
+            let res: &pyo3::types::PyDict = res.cast_as(py).unwrap();
+            let mut d: HashMap<String, u32> = HashMap::new();
+            for (k, v) in res.iter() {
+                let k: &pyo3::types::PyString = k.cast_as().unwrap();
+                let v: u32 = v.extract().unwrap();
+                d.insert(k.to_string_lossy().to_string(), v);
+            }
+            d
+        });
+        ripstop::simulation::Values(x)
+    }
+}
+
 #[pymethods]
 impl SimulationInstance {
     #[new]
-    fn new(path: String, top: String) -> PyResult<Self> {
+    fn new(
+        path: String,
+        top: String,
+        simulators: Option<HashMap<String, Py<PyAny>>>,
+    ) -> PyResult<Self> {
+        let simulators = simulators.unwrap_or(HashMap::new());
+        let mut rust_simulators: HashMap<
+            String,
+            Box<dyn ripstop::simulation::ModuleSimulator + Send>,
+        > = HashMap::new();
+        for sim in simulators.iter() {
+            rust_simulators.insert(
+                sim.0.clone(),
+                Box::new(PythonModuleSim {
+                    object: sim.1.clone(),
+                }),
+            );
+        }
         let module = ripstop::simulation::Module::new::<&'static str>(
             std::path::PathBuf::from(path),
             &top,
             None,
-            HashMap::new(),
+            rust_simulators,
         )
         .map_err(|e| Error(e))?;
         Ok(Self {
