@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 use crate::{ast::Type, ir::ModuleDeclaration};
 use std::collections::HashMap;
 
@@ -1104,10 +1106,11 @@ fn variable_name_relative(var_id: &str, index: i64) -> String {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ExternalModule {
     pub module_name: String,
     pub instance_path: Vec<String>,
+    pub declaration: ModuleDeclaration,
 }
 
 fn recursive_external_module_helper(
@@ -1130,6 +1133,7 @@ fn recursive_external_module_helper(
             result.push(ExternalModule {
                 module_name: module_name.to_string(),
                 instance_path: path,
+                declaration: declaration.clone(),
             });
         } else {
             let module = modules

@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Write};
@@ -33,6 +34,9 @@ pub enum Error {
 pub enum StepError {
     #[error("Error running step")]
     StepError(#[from] std::io::Error),
+
+    #[error("Error in module simulator")]
+    SimulatorError(Box<dyn std::error::Error>),
 }
 
 impl std::convert::From<CompileError> for Error {
@@ -58,7 +62,20 @@ impl Drop for ExecutableFile {
     }
 }
 
+/// Represents a section of a variable within a word.
+#[derive(Debug, PartialEq, Serialize)]
+struct NamedVariableInWord {
+    name: String,
+
+    /// The part of the variable contained in this word
+    var_section: Range,
+
+    /// The part of the word that this snippet takes up
+    word_section: Range,
+}
+
 /// Represents a mapping of some set of typed variables to a linear set of bits
+#[derive(Debug)]
 struct LinearVariableMapping {
     variables: Vec<(String, Type, Range)>,
 }
@@ -95,6 +112,50 @@ impl LinearVariableMapping {
         Self::new(variables)
     }
 
+    /// Converts this representation into a list of words, where each word contains the
+    /// variables (and their ranges) contained in that 32-bit word.
+    fn to_words(&self) -> Vec<Vec<NamedVariableInWord>> {
+        let mut res = vec![];
+        for i in 0..self.get_size_bits() / 32 {
+            let i = i as u32;
+            let low = i * 32;
+            let high = (i + 1) * 32 - 1;
+            let mut x: Vec<_> = self
+                .variables
+                .iter()
+                .filter(|(_, _, range)| range.low <= high && range.high >= low)
+                .collect();
+            x.sort_by_key(|(_, _, r)| -(r.low as i32));
+            let x: Vec<_> = x
+                .iter()
+                .map(|(name, _, range)| {
+                    let word_low = range.low.saturating_sub(32 * i);
+                    let word_high = (range.high - 32 * i).min(31);
+                    let var_low = if range.low < 32 * i {
+                        32 * i - range.low
+                    } else {
+                        0
+                    };
+                    let var_high = var_low + word_high - word_low;
+                    println!("{} {:?} {} {} {}", name, range, i, var_low, var_high);
+                    NamedVariableInWord {
+                        name: name.to_owned(),
+                        var_section: Range {
+                            low: var_low,
+                            high: var_high,
+                        },
+                        word_section: Range {
+                            low: word_low,
+                            high: word_high,
+                        },
+                    }
+                })
+                .collect();
+            res.push(x);
+        }
+        res
+    }
+
     /// Returns the number of bits needed to represent this mapping, rounded
     /// to the correct number of words
     fn get_size_bits(&self) -> usize {
@@ -113,11 +174,49 @@ impl LinearVariableMapping {
     }
 }
 
+pub trait ModuleSimulator {
+    fn step(&self, inputs: Values) -> Values;
+}
+
+/// This is the struct used to generate the simulation's shims
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct ShimModuleDefinition {
+    pub name: String,
+    pub path: Vec<String>,
+    pub inputs: Vec<(String, Type, usize)>,
+    pub outputs: Vec<(String, Type, usize)>,
+}
+
+impl std::convert::From<&ExternalModule> for ShimModuleDefinition {
+    fn from(value: &ExternalModule) -> Self {
+        Self {
+            name: value.module_name.clone(),
+            path: value.instance_path.clone(),
+            inputs: value
+                .declaration
+                .inputs
+                .iter()
+                .map(|(vartype, name)| (name.to_string(), *vartype, vartype.bit_size()))
+                .collect(),
+            outputs: value
+                .declaration
+                .outputs
+                .iter()
+                .map(|(vartype, name)| (name.to_string(), *vartype, vartype.bit_size()))
+                .collect(),
+        }
+    }
+}
+
 pub struct Module {
     inputs: LinearVariableMapping,
     outputs: LinearVariableMapping,
+    external_outputs: LinearVariableMapping,
+    external_inputs: LinearVariableMapping,
     input_bytes: usize,
     output_words: usize,
+    external_output_bytes: usize,
+    external_input_words: usize,
     executable_file: Arc<ExecutableFile>,
     dumpfile: Option<std::path::PathBuf>,
 }
@@ -127,6 +226,7 @@ impl Module {
         input: std::path::PathBuf,
         top: &str,
         dumpfile: Option<P>,
+        simulators: HashMap<String, Box<dyn ModuleSimulator>>,
     ) -> Result<Self> {
         let inputpath = input.clone();
 
@@ -139,8 +239,49 @@ impl Module {
         if result.errors.len() > 0 {
             return Err(Error::RipstopError(result.errors));
         }
-        let (_, mut modules, v_a) = result.result.unwrap();
+        let (module_declarations, mut modules, v_a) = result.result.unwrap();
 
+        let external_modules =
+            collect_external_modules(top, &module_declarations, &modules).unwrap();
+        let external_modules: Vec<ShimModuleDefinition> =
+            external_modules.iter().map(|x| x.into()).collect();
+
+        // TODO: Verify that all required external modules are specified
+
+        let external_inputs = LinearVariableMapping::new(
+            external_modules
+                .iter()
+                .flat_map(|module| {
+                    let v: Vec<_> = module
+                        .inputs
+                        .iter()
+                        .map(|(a, b, _)| (format!("{}.{}", module.path.join("."), a), *b))
+                        .collect();
+                    v
+                })
+                .collect(),
+        );
+        let external_outputs = LinearVariableMapping::new(
+            external_modules
+                .iter()
+                .flat_map(|module| {
+                    let v: Vec<_> = module
+                        .outputs
+                        .iter()
+                        .map(|(a, b, _)| (format!("{}.__rp_{}", module.path.join("."), a), *b))
+                        .collect();
+                    v
+                })
+                .collect(),
+        );
+        println!("{:#?}", external_inputs);
+        println!("{:#?}", external_outputs);
+
+        // Format the external inputs as required for the template
+        // An array of words, each word contains the variables in it
+        let template_external_inputs = external_inputs.to_words();
+
+        // Find the top module and compile it
         let module = modules
             .drain(..)
             .filter(|m| m.name == top)
@@ -177,6 +318,13 @@ impl Module {
         context.insert("input_bytes", &input_bytes);
         context.insert("output_words", &output_words);
         context.insert("output_word_iterator", &output_word_iterator);
+        context.insert("external_modules", &external_modules);
+        let external_output_bytes = external_outputs.get_size_bits() / 8;
+        context.insert("external_output_bytes", &external_output_bytes);
+        context.insert("external_outputs", &external_outputs.variables);
+        let external_input_words = external_inputs.get_size_bits() / 32;
+        context.insert("external_input_words", &external_input_words);
+        context.insert("external_inputs", &template_external_inputs);
 
         if let Some(dumpfile) = &dumpfile {
             context.insert("output_dumpfile", &true);
@@ -188,6 +336,9 @@ impl Module {
         let harness = tera.render("simulation_harness.v", &context).unwrap();
 
         let mut sim_file = tempfile::NamedTempFile::new()?;
+
+        //println!("{}", harness);
+        //todo!();
 
         sim_file.write_all(harness.as_bytes())?;
         sim_file.flush()?;
@@ -206,6 +357,9 @@ impl Module {
             },
         )?;
 
+        // Temporary for debugging
+        sim_file.keep()?;
+
         p.communicate(None)?;
 
         Ok(Self {
@@ -213,6 +367,10 @@ impl Module {
             outputs,
             input_bytes: input_bytes as usize,
             output_words: output_words as usize,
+            external_output_bytes,
+            external_outputs,
+            external_input_words,
+            external_inputs,
             executable_file: Arc::new(ExecutableFile(output_file)),
             dumpfile: dumpfile.map(|p| p.as_ref().to_path_buf()),
         })
@@ -335,6 +493,10 @@ impl Instance {
 
         // Clear reset
         self.send_command(107)?;
+
+        self.update_external_modules()?;
+
+        // Retrieve the output
         self.send_command(104)?;
         let o = self.read_outputs()?;
         self.send_command(108)?;
@@ -370,81 +532,103 @@ impl Instance {
         }
         Ok(Values::from_words(&v, &self.module.outputs))
     }
+
+    fn update_external_modules(&self) -> StepResult<()> {
+        // Get the external module data
+        self.send_command(110)?;
+
+        let mut v = vec![0u32; self.module.external_input_words];
+        for i in 0..self.module.external_input_words {
+            let mut word_value = [0u8; 4];
+            self.stdout().read_exact(&mut word_value)?;
+            v[i] = u32::from_le_bytes(word_value);
+        }
+        let external_inputs = Values::from_words(&v, &self.module.external_inputs);
+        println!("{:?}", v);
+        println!("{:#?}", external_inputs);
+
+        // Set the external module data
+        self.stdin().write_all(&[111])?;
+        let mut eo = Values(HashMap::new());
+        eo.0.insert(
+            "add_instance.__rp_result".to_string(),
+            external_inputs.0.get("add_instance.a").unwrap()
+                + external_inputs.0.get("add_instance.b").unwrap(),
+        );
+        let eo = eo.to_bytes(
+            self.module.external_output_bytes,
+            &self.module.external_outputs,
+        );
+        self.stdin().write_all(&eo)?;
+        self.stdin().flush()?;
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
 
+    fn var(name: &str, size: usize) -> (String, Type) {
+        (name.to_owned(), Type::Bits { size })
+    }
+
     #[test]
     fn test_values_to_bytes() {
-        let mapping = [
-            ("data_in".to_string(), Type::Bit, Range { low: 0, high: 4 }),
-            ("save".to_string(), Type::Bit, Range { low: 5, high: 5 }),
-        ];
+        let mapping = LinearVariableMapping::new(vec![var("data_in", 5), var("save", 1)]);
 
         let res = Values(HashMap::from([
             ("data_in".to_string(), 0),
             ("save".to_string(), 1),
         ]))
-        .to_bytes(1, &mapping[..]);
+        .to_bytes(1, &mapping);
         assert_eq!(res, &[32]);
 
         let res = Values(HashMap::from([
             ("data_in".to_string(), 10),
             ("save".to_string(), 0),
         ]))
-        .to_bytes(1, &mapping[..]);
+        .to_bytes(1, &mapping);
         assert_eq!(res, &[10]);
 
         let res = Values(HashMap::from([
             ("data_in".to_string(), 1),
             ("save".to_string(), 1),
         ]))
-        .to_bytes(1, &mapping[..]);
+        .to_bytes(1, &mapping);
         assert_eq!(res, &[33]);
     }
 
     #[test]
     fn test_values_to_bytes_bridging_bytes() {
-        let mapping = [
-            ("a".to_string(), Type::Bit, Range { low: 0, high: 4 }),
-            ("b".to_string(), Type::Bit, Range { low: 5, high: 13 }),
-            ("c".to_string(), Type::Bit, Range { low: 14, high: 20 }),
-        ];
+        let mapping = LinearVariableMapping::new(vec![var("a", 5), var("b", 9), var("c", 6)]);
 
         let res = Values(HashMap::from([
             ("a".to_string(), 10),
             ("b".to_string(), 123),
             ("c".to_string(), 19),
         ]))
-        .to_bytes(3, &mapping[..]);
+        .to_bytes(3, &mapping);
         assert_eq!(res, &[0x6a, 0xcf, 0x4]);
     }
 
     #[test]
     fn test_values_to_bytes_multibyte() {
-        let mapping = [
-            ("a".to_string(), Type::Bit, Range { low: 0, high: 9 }),
-            ("b".to_string(), Type::Bit, Range { low: 10, high: 13 }),
-            ("c".to_string(), Type::Bit, Range { low: 14, high: 35 }),
-        ];
+        let mapping = LinearVariableMapping::new(vec![var("a", 10), var("b", 4), var("c", 22)]);
 
         let res = Values(HashMap::from([
             ("a".to_string(), 300),
             ("b".to_string(), 5),
             ("c".to_string(), 1_000_000),
         ]))
-        .to_bytes(5, &mapping[..]);
+        .to_bytes(5, &mapping);
         assert_eq!(res, &[0x2c, 0x15, 0x90, 0xd0, 0x3]);
     }
 
     #[test]
     fn test_values_from_words() {
-        let mapping = [
-            ("data_in".to_string(), Type::Bit, Range { low: 0, high: 4 }),
-            ("save".to_string(), Type::Bit, Range { low: 5, high: 5 }),
-        ];
+        let mapping = LinearVariableMapping::new(vec![var("data_in", 5), var("save", 1)]);
 
         let values = Values::from_words(&[32], &mapping);
         assert_eq!(*values.0.get("data_in").unwrap(), 0);
@@ -453,13 +637,79 @@ mod test {
 
     #[test]
     fn test_values_from_words_word_boundary() {
-        let mapping = [
-            ("a".to_string(), Type::Bit, Range { low: 0, high: 28 }),
-            ("b".to_string(), Type::Bit, Range { low: 29, high: 37 }),
-        ];
+        let mapping = LinearVariableMapping::new(vec![var("a", 29), var("b", 9)]);
 
         let values = Values::from_words(&[0x600f_4240, 0x0f], &mapping);
         assert_eq!(*values.0.get("a").unwrap(), 1_000_000);
         assert_eq!(*values.0.get("b").unwrap(), 123);
+    }
+
+    fn named_range(
+        name: &str,
+        high: usize,
+        low: usize,
+        word_high: usize,
+        word_low: usize,
+    ) -> NamedVariableInWord {
+        NamedVariableInWord {
+            name: name.to_owned(),
+            var_section: Range {
+                high: high as u32,
+                low: low as u32,
+            },
+            word_section: Range {
+                high: word_high as u32,
+                low: word_low as u32,
+            },
+        }
+    }
+
+    #[test]
+    fn test_make_words() {
+        let mapping = LinearVariableMapping::new(vec![var("a", 16), var("b", 16)]);
+        assert_eq!(
+            mapping.to_words(),
+            vec![vec![
+                named_range("b", 15, 0, 31, 16),
+                named_range("a", 15, 0, 15, 0),
+            ]]
+        );
+    }
+
+    #[test]
+    fn test_words_multi() {
+        let mapping =
+            LinearVariableMapping::new(vec![var("a", 5), var("b", 16), var("c", 11), var("d", 32)]);
+        assert_eq!(
+            mapping.to_words(),
+            vec![
+                vec![
+                    named_range("c", 10, 0, 31, 21),
+                    named_range("b", 15, 0, 20, 5),
+                    named_range("a", 4, 0, 4, 0),
+                ],
+                vec![named_range("d", 31, 0, 31, 0)],
+            ]
+        );
+    }
+
+    #[test]
+    fn test_words_split() {
+        let mapping =
+            LinearVariableMapping::new(vec![var("a", 5), var("b", 16), var("c", 23), var("d", 20)]);
+        assert_eq!(
+            mapping.to_words(),
+            vec![
+                vec![
+                    named_range("c", 10, 0, 31, 21),
+                    named_range("b", 15, 0, 20, 5),
+                    named_range("a", 4, 0, 4, 0),
+                ],
+                vec![
+                    named_range("d", 19, 0, 31, 12),
+                    named_range("c", 22, 11, 11, 0),
+                ],
+            ]
+        );
     }
 }

@@ -175,7 +175,7 @@ module comb_add(bits<4> a, bits<4> b) -> (bits<4> c) {
             }
             std::process::exit(-1);
         }
-        let (mut modules, _) = result.result.unwrap();
+        let (_, mut modules, _) = result.result.unwrap();
 
         let x = modules.drain(..).next().unwrap();
         x

@@ -5,6 +5,8 @@
 /// The IR is time-aware.
 use std::collections::HashMap;
 
+use serde::{Deserialize, Serialize};
+
 use crate::ast::{ASTNode, ASTNodeType, StringContext, Type};
 use crate::error::{CompileError, CompileResult};
 use crate::logerror;
@@ -649,7 +651,7 @@ impl Block {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ModuleDeclaration {
     pub name: String,
     pub is_extern: bool,

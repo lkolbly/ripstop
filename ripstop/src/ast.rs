@@ -1,9 +1,9 @@
 use crate::parse::Rule;
 use pest::iterators::Pair;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Type {
     None,
     Bit,
@@ -31,6 +31,10 @@ impl Type {
             Self::Bit => 1,
             Self::Bits { size } => *size,
         }
+    }
+
+    pub fn bitvec(nbits: usize) -> Self {
+        Self::Bits { size: nbits }
     }
 }
 

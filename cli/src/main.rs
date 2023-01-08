@@ -143,6 +143,7 @@ fn main() {
                     input.clone(),
                     &module.name,
                     None,
+                    HashMap::new(),
                 )
                 .expect("Couldn't compile simulation module");
                 let mut instance = sim_module.instantiate();
@@ -177,7 +178,9 @@ fn main() {
             }
         }
         Commands::Simulate { input, top } => {
-            let m = ripstop::simulation::Module::new::<&'static str>(input, &top, None).unwrap();
+            let m =
+                ripstop::simulation::Module::new::<&'static str>(input, &top, None, HashMap::new())
+                    .unwrap();
             let mut instance = m.instantiate();
 
             instance

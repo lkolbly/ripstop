@@ -1,5 +1,25 @@
 `timescale 10ns/10ns
 
+{% for module in external_modules %}
+module {{module.name}}(
+    {% for input in module.inputs %}
+    input [{{input.2 - 1}}:0] {{input.0}},
+    {% endfor %}
+    {% for output in module.outputs %}
+    output [{{output.2 - 1}}:0] {{output.0}},
+    {% endfor %}
+    input clk,
+    input rst
+);
+
+    {% for output in module.outputs %}
+    reg [{{output.2 - 1}}:0] __rp_{{output.0}};
+    assign {{output.0}} = __rp_{{output.0}};
+    {% endfor %}
+
+endmodule
+{% endfor %}
+
 {{compiled}}
 
 
@@ -9,6 +29,7 @@ module main();
 
     reg clk, rst;
     reg[{{input_size - 1}}:0] data_in;
+    reg[{{external_output_bytes * 8 - 1}}:0] extern_data_out;
     wire[{{output_size - 1}}:0] data_out;
 
     {{module_name}} dut(
@@ -61,6 +82,33 @@ module main();
                     data_in = {$fgetc('h8000_0000), data_in[{{input_size - 1}}:8]};
                 end
                 #1;
+            end else if (c == 110) begin
+                {% for word in external_inputs %}
+                $fwrite('h8000_0001, "%u", {
+                    {% for var in word -%}
+                    dut.{{var.name}}[{{var.var_section.high}}:{{var.var_section.low}}]{% if not loop.last %},{% endif %}
+                    {% endfor %}
+                });
+                {% endfor -%}
+
+                //$fwrite('h8000_0001, "%u", dut.add_instance.a);
+                //$fwrite('h8000_0001, "%u", dut.add_instance.b);
+                $fflush('h8000_0001);
+            end else if (c == 111) begin
+                //extern_data_in = {$fgetc('h8000_0000), extern_data_in[15:8]};
+                //extern_data_in = {$fgetc('h8000_0000), extern_data_in[15:8]};
+                //dut.add_instance.__rp_result = extern_data_in[15:0];
+
+                {% if external_output_bytes > 0 %}
+                for (integer i = 0; i < {{external_output_bytes}}; i++) begin
+                    extern_data_out = {$fgetc('h8000_0000), extern_data_out[{{external_output_bytes * 8 - 1}}:8]};
+                end
+
+                {% for output in external_outputs %}
+                dut.{{output.0}} = extern_data_out[{{output.2.high}}:{{output.2.low}}];
+                {% endfor %}
+                {% endif %}
+
             end else begin
                 $fwrite('h8000_0002, "Unexpected command %d", c);
                 continue = 0;

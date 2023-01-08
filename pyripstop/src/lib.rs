@@ -60,6 +60,7 @@ impl SimulationInstance {
             std::path::PathBuf::from(path),
             &top,
             None,
+            HashMap::new(),
         )
         .map_err(|e| Error(e))?;
         Ok(Self {
