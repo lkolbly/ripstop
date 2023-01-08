@@ -47,7 +47,7 @@ module main();
 
     always begin
         clk = ~clk;
-        #2;
+        #3;
     end
 
     initial begin
@@ -81,8 +81,8 @@ module main();
                 for (integer i = 0; i < {{input_bytes}}; i++) begin
                     data_in = {$fgetc('h8000_0000), data_in[{{input_size - 1}}:8]};
                 end
-                #1;
             end else if (c == 110) begin
+                #2;
                 {% for word in external_inputs %}
                 $fwrite('h8000_0001, "%u", {
                     {% if not word %}
