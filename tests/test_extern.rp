@@ -1,0 +1,8 @@
+extern module add(bits<16> a, bits<16> b) -> (bits<16> result);
+
+module my_module(bits<16> a, bits<16> b) -> (bits<16> result) {
+    instantiate add as add_instance;
+    add_instance.a[t] = a[t];
+    add_instance.b[t] = b[t];
+    result[t] = add_instance.result[t];
+}
