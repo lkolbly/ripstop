@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::ast::{ASTNode, ASTNodeType, StringContext, Type};
+use crate::ast::{ASTNode, ASTNodeType, StringContext, Type, TypeDatabase};
 use crate::error::{CompileError, CompileResult};
 use crate::logerror;
 use crate::parse::{NumberLiteral, Range};
@@ -660,7 +660,11 @@ pub struct ModuleDeclaration {
 }
 
 impl ModuleDeclaration {
-    pub fn from_ast(ast: &Tree<ASTNode>, node: NodeId) -> CompileResult<Self> {
+    pub fn from_ast(
+        ast: &Tree<ASTNode>,
+        node: NodeId,
+        types: &TypeDatabase,
+    ) -> CompileResult<Self> {
         let mut result = CompileResult::new();
 
         let (id, is_extern, in_values, out_values) = match &ast[node].data.node_type {
@@ -680,6 +684,17 @@ impl ModuleDeclaration {
                 panic!("Tried to compile module which wasn't of type Node::ModuleDeclaration");
             }
         };
+
+        let in_values: Vec<_> = in_values
+            .iter()
+            .cloned()
+            .map(|(t, name)| (types.lookup(&t).unwrap(), name))
+            .collect();
+        let out_values: Vec<_> = out_values
+            .iter()
+            .cloned()
+            .map(|(t, name)| (types.lookup(&t).unwrap(), name))
+            .collect();
 
         result.ok(Self {
             name: id.to_string(),
@@ -708,6 +723,7 @@ impl Module {
         ast: &Tree<ASTNode>,
         head: NodeId,
         modules: &Vec<ModuleDeclaration>,
+        types: &TypeDatabase,
     ) -> CompileResult<Self> {
         let mut result = CompileResult::new();
 
@@ -750,12 +766,13 @@ impl Module {
             .iter()
             .flat_map(|n| match &ast.get_node(*n).unwrap().data.node_type {
                 ASTNodeType::VariableDeclaration { var_type, var_id } => {
-                    Some((var_id.to_string(), *var_type))
+                    Some((var_id.to_string(), var_type))
                 }
                 _ => None,
             })
-            .chain(in_values.iter().map(|(a, b)| (b.to_string(), *a)))
-            .chain(out_values.iter().map(|(a, b)| (b.to_string(), *a)))
+            .chain(in_values.iter().map(|(a, b)| (b.to_string(), a)))
+            .chain(out_values.iter().map(|(a, b)| (b.to_string(), a)))
+            .map(|(name, t)| (name, types.lookup(t).unwrap()))
             .chain(instantiations.iter().flat_map(|(instance, module)| {
                 let module = match modules.iter().filter(|m| &m.name == module).next() {
                     Some(m) => m,

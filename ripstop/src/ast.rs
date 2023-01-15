@@ -3,6 +3,12 @@ use pest::iterators::Pair;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ASTType {
+    pub name: String,
+    pub generic_parameter: Option<usize>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Type {
     None,
@@ -35,6 +41,28 @@ impl Type {
 
     pub fn bitvec(nbits: usize) -> Self {
         Self::Bits { size: nbits }
+    }
+}
+
+pub struct TypeDatabase {
+    //
+}
+
+impl TypeDatabase {
+    pub fn new() -> Self {
+        TypeDatabase {}
+    }
+
+    pub fn lookup(&self, ast_type: &ASTType) -> Option<Type> {
+        if ast_type.name == "bit" && ast_type.generic_parameter.is_none() {
+            Some(Type::Bit)
+        } else if ast_type.name == "bits" && ast_type.generic_parameter.is_some() {
+            Some(Type::Bits {
+                size: ast_type.generic_parameter.unwrap(),
+            })
+        } else {
+            None
+        }
     }
 }
 
@@ -134,19 +162,29 @@ pub enum ASTNodeType {
     ModuleDeclaration {
         id: String,
         doc_comment: String,
-        in_values: Vec<(Type, String)>,
-        out_values: Vec<(Type, String)>,
+        in_values: Vec<(ASTType, String)>,
+        out_values: Vec<(ASTType, String)>,
     },
     ExternModuleDeclaration {
         id: String,
         doc_comment: String,
-        in_values: Vec<(Type, String)>,
-        out_values: Vec<(Type, String)>,
+        in_values: Vec<(ASTType, String)>,
+        out_values: Vec<(ASTType, String)>,
     },
     ModuleInstantiation {
         module: String,
         instance: String,
     },
+
+    /// This is a struct definition
+    StructDefinition {
+        name: String,
+    },
+    StructVariable {
+        name: String,
+        member_type: ASTType,
+    },
+
     //Some examples of generated VariableReferences:
     //my_var[t] => var_id: "my_var", t_offset: 0
     //my_var[t - 10] => var_id: "my_var", t_offset: -10
@@ -193,7 +231,7 @@ pub enum ASTNodeType {
 
     Assign,
     VariableDeclaration {
-        var_type: Type,
+        var_type: ASTType,
         var_id: String,
     },
     NumberLiteral(crate::parse::NumberLiteral),

@@ -1,5 +1,6 @@
 use crate::ast::ASTNode;
 use crate::ast::ASTNodeType;
+use crate::ast::ASTType;
 use crate::ast::StringContext;
 use crate::ast::Type;
 use crate::error::CompileError;
@@ -203,6 +204,19 @@ pub fn parse(toparse: &str) -> Result<Tree<ASTNode>, CompileError> {
                 };
                 Some(ASTNodeType::ModuleInstantiation { module, instance })
             }
+            Rule::struct_definition => {
+                let name = inner_rules.next().unwrap().as_str();
+                Some(ASTNodeType::StructDefinition {
+                    name: name.to_string(),
+                })
+            }
+            Rule::struct_variable => {
+                let (t, n) = parse_variable_declaration(inner_rules.next().unwrap());
+                Some(ASTNodeType::StructVariable {
+                    name: n,
+                    member_type: t,
+                })
+            }
             Rule::EOI => None,
             Rule::number_literal => Some(ASTNodeType::NumberLiteral(NumberLiteral::from_tree(
                 pair.clone(),
@@ -266,11 +280,11 @@ pub fn parse(toparse: &str) -> Result<Tree<ASTNode>, CompileError> {
         }
     }
 
-    fn parse_variable_declarations(pair: Pair<Rule>) -> Vec<(Type, String)> {
+    fn parse_variable_declarations(pair: Pair<Rule>) -> Vec<(ASTType, String)> {
         return pair.into_inner().map(parse_variable_declaration).collect();
     }
 
-    fn parse_variable_declaration(pair: Pair<Rule>) -> (Type, String) {
+    fn parse_variable_declaration(pair: Pair<Rule>) -> (ASTType, String) {
         let mut inner_rules = pair.into_inner();
         return (
             parse_type(inner_rules.next().unwrap()),
@@ -278,7 +292,7 @@ pub fn parse(toparse: &str) -> Result<Tree<ASTNode>, CompileError> {
         );
     }
 
-    fn parse_type(pair: Pair<Rule>) -> Type {
+    fn parse_type(pair: Pair<Rule>) -> ASTType {
         let child = pair
             .into_inner()
             .next()
@@ -289,22 +303,20 @@ pub fn parse(toparse: &str) -> Result<Tree<ASTNode>, CompileError> {
         match child.as_rule() {
             Rule::name => {
                 let name = child.as_str();
-                if name == "bit" {
-                    Type::Bit
-                } else {
-                    panic!("Unknown type {}", name);
+                ASTType {
+                    name: name.to_string(),
+                    generic_parameter: None,
                 }
             }
             Rule::generic_variable_type => {
                 let mut inner = child.into_inner();
                 let name = inner.next().unwrap();
                 let value = inner.next().unwrap();
-                if name.as_str() == "bits" {
-                    Type::Bits {
-                        size: NumberLiteral::from_tree(value).value.try_into().unwrap(),
-                    }
-                } else {
-                    panic!("Unknown type {}", name);
+                ASTType {
+                    name: name.as_str().to_string(),
+                    generic_parameter: Some(
+                        NumberLiteral::from_tree(value).value.try_into().unwrap(),
+                    ),
                 }
             }
             _ => unreachable!(),

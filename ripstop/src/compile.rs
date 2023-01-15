@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{ast::Type, ir::ModuleDeclaration};
+use crate::{
+    ast::{Type, TypeDatabase},
+    ir::ModuleDeclaration,
+};
 use std::collections::HashMap;
 
 use crate::{
@@ -301,6 +304,7 @@ fn verify(tree: &Tree<ASTNode>, variables: &HashMap<String, VarBounds>) -> Compi
 fn get_var_bounds(
     tree: &Tree<ASTNode>,
     modules: &Vec<ModuleDeclaration>,
+    types: &TypeDatabase,
 ) -> Result<HashMap<String, VarBounds>, CompileError> {
     //A list of all the variables and their t-offsets. If the variable has only been declared (neither referenced or assigned), then the t-offset will be `None`
     //Reminder: a positive t-offset represents [t+n] and a negative represents [t-n]
@@ -337,10 +341,16 @@ fn get_var_bounds(
             } => {
                 // I/O variables are guaranteed a reference at offset 0
                 for (t, name) in in_values {
-                    variables.insert(name.clone(), VarBounds::new(0, VarScope::Input, *t));
+                    variables.insert(
+                        name.clone(),
+                        VarBounds::new(0, VarScope::Input, types.lookup(t).unwrap()),
+                    );
                 }
                 for (t, name) in out_values {
-                    variables.insert(name.clone(), VarBounds::new(0, VarScope::Output, *t));
+                    variables.insert(
+                        name.clone(),
+                        VarBounds::new(0, VarScope::Output, types.lookup(t).unwrap()),
+                    );
                 }
             }
             ASTNodeType::ModuleInstantiation { module, instance } => {
@@ -367,7 +377,7 @@ fn get_var_bounds(
                 //Never referenced variables have an offset of 0 by default
                 variables.insert(
                     var_id.clone(),
-                    VarBounds::new(0, VarScope::Local, *var_type),
+                    VarBounds::new(0, VarScope::Local, types.lookup(var_type).unwrap()),
                 );
             }
             ASTNodeType::Assign => {
@@ -541,7 +551,9 @@ pub fn compile_document(
 ) -> CompileResult<(Vec<ModuleDeclaration>, Vec<Module>, Tree<VNode>)> {
     let mut result = CompileResult::new();
 
-    let declarations = logerror!(result, get_module_declarations(tree));
+    let types = logerror!(result, get_type_declarations(tree));
+
+    let declarations = logerror!(result, get_module_declarations(tree, &types));
 
     let mut vast = Tree::new();
     let v_head = vast.new_node(VNode::Document);
@@ -556,7 +568,7 @@ pub fn compile_document(
         match &tree.get_node(child).unwrap().data.node_type {
             ASTNodeType::ModuleDeclaration { .. } => {
                 if let Some((module, mut module_vast)) =
-                    noncriterr!(result, compile_module(tree, child, &declarations))
+                    noncriterr!(result, compile_module(tree, child, &declarations, &types))
                 {
                     modules.push(module);
                     singleerror!(result, vast.append_tree(v_head, &mut module_vast));
@@ -572,7 +584,17 @@ pub fn compile_document(
     result
 }
 
-fn get_module_declarations(tree: &mut Tree<ASTNode>) -> CompileResult<Vec<ModuleDeclaration>> {
+fn get_type_declarations(tree: &mut Tree<ASTNode>) -> CompileResult<TypeDatabase> {
+    let mut result = CompileResult::new();
+
+    result.ok(TypeDatabase::new());
+    result
+}
+
+fn get_module_declarations(
+    tree: &mut Tree<ASTNode>,
+    types: &TypeDatabase,
+) -> CompileResult<Vec<ModuleDeclaration>> {
     let mut result = CompileResult::new();
 
     // First, parse all of the declarations
@@ -590,7 +612,8 @@ fn get_module_declarations(tree: &mut Tree<ASTNode>) -> CompileResult<Vec<Module
                 in_values: _in_values,
                 out_values: _out_values,
             } => {
-                if let Some(module) = noncriterr!(result, ModuleDeclaration::from_ast(tree, *child))
+                if let Some(module) =
+                    noncriterr!(result, ModuleDeclaration::from_ast(tree, *child, types))
                 {
                     modules.push(module);
                 }
@@ -601,10 +624,14 @@ fn get_module_declarations(tree: &mut Tree<ASTNode>) -> CompileResult<Vec<Module
                 in_values,
                 out_values,
             } => {
-                if let Some(module) = noncriterr!(result, ModuleDeclaration::from_ast(tree, *child))
+                if let Some(module) =
+                    noncriterr!(result, ModuleDeclaration::from_ast(tree, *child, types))
                 {
                     modules.push(module);
                 }
+            }
+            ASTNodeType::StructDefinition { .. } => {
+                // No-op, these are handled elsewhere
             }
             _ => {
                 panic!("Found top-level object which wasn't a module");
@@ -621,6 +648,7 @@ pub fn compile_module(
     tree: &mut Tree<ASTNode>,
     head: NodeId,
     modules: &Vec<ModuleDeclaration>,
+    types: &TypeDatabase,
 ) -> CompileResult<(Module, Tree<VNode>)> {
     let mut result = CompileResult::new();
 
@@ -629,13 +657,13 @@ pub fn compile_module(
         //Stores pairs of (variable ID, (highest used t-offset, lowest used t-offset))
         //This is needed to create the registers
         let variables: HashMap<String, VarBounds> =
-            singleerror!(result, get_var_bounds(tree, modules));
+            singleerror!(result, get_var_bounds(tree, modules, types));
 
         //Before creating the tree, verify it
         logerror!(result, verify(tree, &variables));
     }
 
-    let module = logerror!(result, Module::from_ast(tree, head, modules));
+    let module = logerror!(result, Module::from_ast(tree, head, modules, types));
 
     //Creating the Verilog AST can now officially begin
 

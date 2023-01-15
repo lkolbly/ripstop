@@ -1,4 +1,4 @@
-document = { SOI ~ (module_declaration | extern_module_declaration)* ~ EOI }
+document = { SOI ~ (module_declaration | extern_module_declaration | struct_definition)* ~ EOI }
 module_declaration = { doc_comment* ~ "module" ~ name ~ variable_declaration_list ~ "->" ~ variable_declaration_list ~ block }
 extern_module_declaration = { doc_comment* ~ "extern" ~ "module" ~ name ~ variable_declaration_list ~ "->" ~ variable_declaration_list ~ ";" }
 
@@ -13,6 +13,9 @@ variable_declaration = { type_then_space ~ name }
 type_then_space = ${ variable_type ~ WHITESPACE }
 variable_type = { generic_variable_type | name }
 generic_variable_type = { name ~ "<" ~ number_literal ~ ">" }
+
+struct_definition = { doc_comment* ~ "struct" ~ name ~ "{" ~ struct_variable+ ~ "}" }
+struct_variable = { variable_declaration ~ ";" }
 
 block = _{ "{" ~ statement* ~ "}" }
 
