@@ -11,9 +11,8 @@ variable_path_list = { name ~ ("." ~ name)* }
 variable_declaration_list = { "(" ~ (variable_declaration)* ~ ("," ~ variable_declaration)* ~ ")" }
 variable_declaration = { type_then_space ~ name }
 type_then_space = ${ variable_type ~ WHITESPACE }
-variable_type = { bits_type | bit_type }
-bit_type = { "bit" }
-bits_type = { "bits" ~ "<" ~ number_literal ~ ">" }
+variable_type = { generic_variable_type | name }
+generic_variable_type = { name ~ "<" ~ number_literal ~ ">" }
 
 block = _{ "{" ~ statement* ~ "}" }
 

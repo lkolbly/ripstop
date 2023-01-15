@@ -287,13 +287,26 @@ pub fn parse(toparse: &str) -> Result<Tree<ASTNode>, CompileError> {
             .next()
             .unwrap();
         match child.as_rule() {
-            Rule::bit_type => Type::Bit,
-            Rule::bits_type => Type::Bits {
-                size: NumberLiteral::from_tree(child.into_inner().next().unwrap())
-                    .value
-                    .try_into()
-                    .unwrap(),
-            },
+            Rule::name => {
+                let name = child.as_str();
+                if name == "bit" {
+                    Type::Bit
+                } else {
+                    panic!("Unknown type {}", name);
+                }
+            }
+            Rule::generic_variable_type => {
+                let mut inner = child.into_inner();
+                let name = inner.next().unwrap();
+                let value = inner.next().unwrap();
+                if name.as_str() == "bits" {
+                    Type::Bits {
+                        size: NumberLiteral::from_tree(value).value.try_into().unwrap(),
+                    }
+                } else {
+                    panic!("Unknown type {}", name);
+                }
+            }
             _ => unreachable!(),
         }
     }
