@@ -1,19 +1,15 @@
-use serde::{Deserialize, Serialize};
-
-use crate::{
-    ast::{Type, TypeDatabase},
-    ir::ModuleDeclaration,
-};
-use std::collections::HashMap;
-
 use crate::{
     ast::{ASTNode, ASTNodeType},
     error::{CompileError, CompileResult},
+    ir::ModuleDeclaration,
     ir::{BinaryOperator, Expression, LogicalExpression, Module, UnaryOperator},
     logerror, noncriterr, singleerror,
     tree::{NodeId, Tree, TreeError},
+    types::{PrimordialStructDefinition, Type, TypeDatabase},
     verilog_ast::{AlwaysBeginTriggerType, VNode},
 };
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 // fn normalize(tree: &mut Tree<ASTNode>) -> Result<(), CompileError> {
 //     let variables = get_referenced_variables_with_highest_and_lowest_t_offset(tree)?;
@@ -86,7 +82,7 @@ fn get_node_type(
         //Variable references pass their types up without needing to check their (non-existent) children
         ASTNodeType::VariableReference { var_id } => {
             let bounds = &variables[var_id];
-            Ok(bounds.var_type)
+            Ok(bounds.var_type.clone())
         }
         //Indexing restricts the type and only works on arrays/bits<n> when `n >= high >= low >= 0`. Due to type limits, `low >= 0` is guaranteed
         ASTNodeType::Index { high, low } => {
@@ -103,12 +99,12 @@ fn get_node_type(
             } else {
                 Err(CompileError::CannotIndexType {
                     context: this_node.data.context.clone(),
-                    invalid_type: child_vals[0],
+                    invalid_type: child_vals[0].clone(),
                 })
             }
         }
         //Unary operators don't need to worry about type matching and transformation
-        ASTNodeType::BitwiseInverse => Ok(child_vals[0]),
+        ASTNodeType::BitwiseInverse => Ok(child_vals[0].clone()),
         //Binary operators require valid types, and theoretically this could allow for different types on each side
         //For example, if matrix multiplication was added, then as long as `lhs` was a matrix, `rhs` could be matrix or scalar
         ASTNodeType::Add
@@ -119,15 +115,15 @@ fn get_node_type(
             //The error which will be returned if a type mismatch occurs
             let err = Err(CompileError::MismatchedTypes {
                 context: tree[this_node.children.clone()[0]].data.context.clone(),
-                current_type: child_vals[1],
-                needed_type: child_vals[0],
+                current_type: child_vals[1].clone(),
+                needed_type: child_vals[0].clone(),
             });
 
-            match (child_vals[0], child_vals[1]) {
+            match (&child_vals[0], &child_vals[1]) {
                 (Type::Bit, Type::Bit) => Ok(Type::Bit),
                 (Type::Bits { size: lhs_size }, Type::Bits { size: rhs_size }) => {
                     if lhs_size == rhs_size {
-                        Ok(Type::Bits { size: lhs_size })
+                        Ok(Type::Bits { size: *lhs_size })
                     } else {
                         err
                     }
@@ -144,11 +140,11 @@ fn get_node_type(
             //The error which will be returned if a type mismatch occurs
             let err = Err(CompileError::MismatchedTypes {
                 context: tree[this_node.children.clone()[0]].data.context.clone(),
-                current_type: child_vals[1],
-                needed_type: child_vals[0],
+                current_type: child_vals[1].clone(),
+                needed_type: child_vals[0].clone(),
             });
 
-            match (child_vals[0], child_vals[1]) {
+            match (&child_vals[0], &child_vals[1]) {
                 (Type::Bit, Type::Bit) => Ok(Type::Bit),
                 (Type::Bits { size: lhs_size }, Type::Bits { size: rhs_size }) => {
                     if lhs_size == rhs_size {
@@ -363,7 +359,7 @@ fn get_var_bounds(
                 for (vartype, varname) in module.inputs.iter().chain(module.outputs.iter()) {
                     variables.insert(
                         format!("{}.{}", instance, varname),
-                        VarBounds::new(0, VarScope::Local, *vartype),
+                        VarBounds::new(0, VarScope::Local, vartype.clone()),
                     );
                 }
             }
@@ -587,7 +583,27 @@ pub fn compile_document(
 fn get_type_declarations(tree: &mut Tree<ASTNode>) -> CompileResult<TypeDatabase> {
     let mut result = CompileResult::new();
 
-    result.ok(TypeDatabase::new());
+    let head = singleerror!(
+        result,
+        tree.find_head().ok_or(CompileError::CouldNotFindASTHead)
+    );
+
+    let structs: Vec<_> = tree
+        .get_node(head)
+        .unwrap()
+        .children
+        .iter()
+        .filter_map(
+            |child| match &tree.get_node(*child).unwrap().data.node_type {
+                ASTNodeType::StructDefinition { name } => {
+                    noncriterr!(result, PrimordialStructDefinition::from_ast(tree, *child))
+                }
+                _ => None,
+            },
+        )
+        .collect();
+
+    result.ok(TypeDatabase::new(structs));
     result
 }
 
@@ -720,7 +736,7 @@ pub fn compile_module(
             .inputs
             .iter()
             .chain(module.outputs.iter())
-            .map(|(t, n)| (*t, n.to_owned(), format!("{}_{}", instance, n), true))
+            .map(|(t, n)| (t.clone(), n.to_owned(), format!("{}_{}", instance, n), true))
             .chain(std::iter::once((
                 Type::Bit,
                 "clk".to_owned(),

@@ -1,4 +1,6 @@
+use crate::error::CompileResult;
 use crate::parse::Rule;
+use crate::tree::{NodeId, Tree};
 use pest::iterators::Pair;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
@@ -7,63 +9,6 @@ use std::fmt::Display;
 pub struct ASTType {
     pub name: String,
     pub generic_parameter: Option<usize>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Type {
-    None,
-    Bit,
-    Bits { size: usize },
-}
-
-impl Display for Type {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
-            Type::Bit => "bit".to_string(),
-            Type::Bits { size } => format!("bits<{size}>"),
-            //Alternatively, `None` could become `_`
-            Type::None => "[TYPELESS]".to_string(),
-        };
-        write!(f, "{}", s)
-    }
-}
-
-impl Type {
-    pub fn bit_size(&self) -> usize {
-        match self {
-            Self::None => {
-                panic!("None type doesn't have a size?");
-            }
-            Self::Bit => 1,
-            Self::Bits { size } => *size,
-        }
-    }
-
-    pub fn bitvec(nbits: usize) -> Self {
-        Self::Bits { size: nbits }
-    }
-}
-
-pub struct TypeDatabase {
-    //
-}
-
-impl TypeDatabase {
-    pub fn new() -> Self {
-        TypeDatabase {}
-    }
-
-    pub fn lookup(&self, ast_type: &ASTType) -> Option<Type> {
-        if ast_type.name == "bit" && ast_type.generic_parameter.is_none() {
-            Some(Type::Bit)
-        } else if ast_type.name == "bits" && ast_type.generic_parameter.is_some() {
-            Some(Type::Bits {
-                size: ast_type.generic_parameter.unwrap(),
-            })
-        } else {
-            None
-        }
-    }
 }
 
 /// Struct for storing the context of an AST node, such as its position within the input string and the input string representing the node.

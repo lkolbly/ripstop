@@ -10,6 +10,7 @@ pub mod parse;
 pub mod simulation;
 pub mod test;
 pub mod tree;
+pub mod types;
 pub mod verilog_ast;
 
 pub use crate::compile::compile_document;

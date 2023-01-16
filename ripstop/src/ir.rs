@@ -7,11 +7,12 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::ast::{ASTNode, ASTNodeType, StringContext, Type, TypeDatabase};
+use crate::ast::{ASTNode, ASTNodeType, StringContext};
 use crate::error::{CompileError, CompileResult};
 use crate::logerror;
 use crate::parse::{NumberLiteral, Range};
 use crate::tree::{NodeId, Tree};
+use crate::types::{Type, TypeDatabase};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TimeReference {
@@ -376,7 +377,7 @@ impl Expression {
                     // at the assignment, inside the block, since the user doesn't see it as a ternary.
                     result.error(CompileError::MismatchedTypes {
                         context: condition.context.clone(),
-                        current_type: lhs_type,
+                        current_type: lhs_type.clone(),
                         needed_type: rhs_type,
                     });
                 }

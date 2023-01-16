@@ -2,10 +2,10 @@ use crate::ast::ASTNode;
 use crate::ast::ASTNodeType;
 use crate::ast::ASTType;
 use crate::ast::StringContext;
-use crate::ast::Type;
 use crate::error::CompileError;
 use crate::tree::NodeId;
 use crate::tree::Tree;
+use crate::types::Type;
 
 use lazy_static::lazy_static;
 

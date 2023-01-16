@@ -1,5 +1,6 @@
-use crate::ast::{ASTNode, StringContext, Type};
+use crate::ast::{ASTNode, StringContext};
 use crate::tree::TreeError;
+use crate::types::Type;
 
 #[derive(Clone)]
 pub enum CompileError {

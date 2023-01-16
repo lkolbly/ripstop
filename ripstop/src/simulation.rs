@@ -10,6 +10,7 @@ use crate::ast::*;
 use crate::compile::*;
 use crate::error::CompileError;
 use crate::parse::{parse, Range};
+use crate::types::Type;
 use crate::verilog_ast::verilog_ast_to_string;
 
 #[derive(Debug, Error)]
@@ -106,7 +107,7 @@ impl LinearVariableMapping {
             .iter()
             .map(|varname| {
                 let t = variable_table.get(varname).unwrap();
-                (varname.to_string(), *t)
+                (varname.to_string(), t.clone())
             })
             .collect();
         Self::new(variables)
@@ -196,13 +197,13 @@ impl std::convert::From<&ExternalModule> for ShimModuleDefinition {
                 .declaration
                 .inputs
                 .iter()
-                .map(|(vartype, name)| (name.to_string(), *vartype, vartype.bit_size()))
+                .map(|(vartype, name)| (name.to_string(), vartype.clone(), vartype.bit_size()))
                 .collect(),
             outputs: value
                 .declaration
                 .outputs
                 .iter()
-                .map(|(vartype, name)| (name.to_string(), *vartype, vartype.bit_size()))
+                .map(|(vartype, name)| (name.to_string(), vartype.clone(), vartype.bit_size()))
                 .collect(),
         }
     }
@@ -257,7 +258,7 @@ impl Module {
                     let v: Vec<_> = module
                         .inputs
                         .iter()
-                        .map(|(a, b, _)| (format!("{}.{}", module.path.join("."), a), *b))
+                        .map(|(a, b, _)| (format!("{}.{}", module.path.join("."), a), b.clone()))
                         .collect();
                     v
                 })
@@ -270,7 +271,9 @@ impl Module {
                     let v: Vec<_> = module
                         .outputs
                         .iter()
-                        .map(|(a, b, _)| (format!("{}.__rp_{}", module.path.join("."), a), *b))
+                        .map(|(a, b, _)| {
+                            (format!("{}.__rp_{}", module.path.join("."), a), b.clone())
+                        })
                         .collect();
                     v
                 })
