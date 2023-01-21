@@ -406,17 +406,26 @@ impl Block {
             result,
             Self::from_ast_with_offsets(ast, children, declaration_allowed)
         );
+        let (mut assignments, mut errors) = assignments
+            .drain()
+            .map(|(variable, (offset, mut expr))| {
+                expr.shift_time(-offset);
+                if expr.depends_on_future() {
+                    Err(CompileError::Causality {
+                        var_name: variable.clone(),
+                        context: expr.context.clone(),
+                    })
+                } else {
+                    Ok((variable, expr))
+                }
+            })
+            .partition::<Vec<Result<(_, _), CompileError>>, _>(Result::is_ok);
+        errors
+            .drain(..)
+            .for_each(|e| result.error(e.err().unwrap()));
+        let assignments: HashMap<_, _> = assignments.drain(..).map(|a| a.unwrap()).collect();
         result.ok(Self {
-            assignments: assignments
-                .drain()
-                .map(|(variable, (offset, mut expr))| {
-                    expr.shift_time(-offset);
-                    if expr.depends_on_future() {
-                        panic!("Expression depends on the future!");
-                    }
-                    (variable, expr)
-                })
-                .collect(),
+            assignments: assignments,
         });
         result
     }
@@ -551,7 +560,11 @@ impl Block {
                         let (false_offset, iffalse) = value;
 
                         if true_offset != false_offset {
-                            panic!("A given variable must be assigned at the same time step across conditional branches");
+                            result.error(CompileError::DifferentTimeAssignsInConditional {
+                                var_name: variable.clone(),
+                                first_assignment: iftrue.context.clone(),
+                                second_assignment: iffalse.context.clone(),
+                            });
                         }
 
                         assignments.insert(
@@ -751,10 +764,11 @@ impl Module {
             }
         }) {
             if instantiations.contains_key(&instance) {
-                panic!(
-                    "Cannot have multiple instantiations with name {}!",
-                    instance
-                );
+                result.error(CompileError::DuplicateInstantiation {
+                    module_name: module.clone(),
+                    instance_name: instance.clone(),
+                    location: id.clone(),
+                });
             }
             instantiations.insert(instance, module);
         }
@@ -777,7 +791,13 @@ impl Module {
             .chain(instantiations.iter().flat_map(|(instance, module)| {
                 let module = match modules.iter().filter(|m| &m.name == module).next() {
                     Some(m) => m,
-                    None => panic!("Could not find module declaration {}", module),
+                    None => {
+                        result.error(CompileError::UndeclaredModule {
+                            module_name: module.clone(),
+                            instance_name: instance.clone(),
+                        });
+                        return vec![];
+                    }
                 };
                 let mut module_variables = vec![];
                 for (var_type, var_name) in module.inputs.iter().chain(module.outputs.iter()) {

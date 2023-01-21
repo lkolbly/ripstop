@@ -55,6 +55,24 @@ pub enum CompileError {
         var_name: String,
         context: StringContext,
     },
+    DifferentTimeAssignsInConditional {
+        var_name: String,
+        first_assignment: StringContext,
+        second_assignment: StringContext,
+    },
+    Causality {
+        var_name: String,
+        context: StringContext,
+    },
+    DuplicateInstantiation {
+        module_name: String,
+        instance_name: String,
+        location: String,
+    },
+    UndeclaredModule {
+        module_name: String,
+        instance_name: String,
+    },
 }
 
 impl From<TreeError> for CompileError {
@@ -98,6 +116,18 @@ impl std::fmt::Debug for CompileError {
             CompileError::InvalidResetValue { context } => include_position(context, &format!("Invalid reset value")),
             CompileError::VariableNotAssigned { var_name } => write!(f, "Variable '{}' not assigned", var_name),
             CompileError::MultipleAssignment { var_name, context } => include_position(context, &format!("Cannot assign to variable {} multiple times", var_name)),
+            CompileError::DifferentTimeAssignsInConditional { var_name, first_assignment, second_assignment } => {
+                write!(f, "Variables must be assigned at the same time offset in both branches of a conditional\n")?;
+                write!(f, "First assignment at {}\n", first_assignment)?;
+                write!(f, "Second assignment at {}", second_assignment)
+            },
+            CompileError::Causality { var_name, context } => include_position(context, &format!("Expression depends on the future")),
+            CompileError::DuplicateInstantiation { module_name, instance_name, location } => {
+                write!(f, "Instantiated {} as {} in module {} twice", module_name, instance_name, location)
+            }
+            CompileError::UndeclaredModule { module_name, instance_name } => {
+                write!(f, "Could not find module {} instantated as {}", module_name, instance_name)
+            }
         }
     }
 }
@@ -133,7 +163,6 @@ macro_rules! logerror {
         match res.result {
             Some(x) => x,
             None => {
-                println!("Passing along error at {} {}", file!(), line!());
                 return $errors;
             }
         }
@@ -165,7 +194,6 @@ macro_rules! singleerror {
             Ok(x) => x,
             Err(e) => {
                 $errors.errors.push(CompileError::from(e));
-                println!("Passing along error at {} {}", file!(), line!());
                 return $errors;
             }
         }

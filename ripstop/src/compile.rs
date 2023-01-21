@@ -350,12 +350,15 @@ fn get_var_bounds(
                 }
             }
             ASTNodeType::ModuleInstantiation { module, instance } => {
-                let module = modules
-                    .iter()
-                    .filter(|m| &m.name == module)
-                    .next()
-                    // TODO: Make this an error
-                    .expect("Couldn't find module");
+                let module = match modules.iter().filter(|m| &m.name == module).next() {
+                    Some(x) => x,
+                    None => {
+                        return Err(CompileError::UndeclaredModule {
+                            module_name: module.clone(),
+                            instance_name: instance.clone(),
+                        });
+                    }
+                };
                 for (vartype, varname) in module.inputs.iter().chain(module.outputs.iter()) {
                     variables.insert(
                         format!("{}.{}", instance, varname),
@@ -721,11 +724,16 @@ pub fn compile_module(
 
     // Instantiate each module instantiation
     for (instance, module) in module.instantiations.iter() {
-        let module = modules
-            .iter()
-            .filter(|m| &m.name == module)
-            .next()
-            .expect("Couldn't find module");
+        let module = match modules.iter().filter(|m| &m.name == module).next() {
+            Some(x) => x,
+            None => {
+                result.error(CompileError::UndeclaredModule {
+                    module_name: module.clone(),
+                    instance_name: instance.clone(),
+                });
+                continue;
+            }
+        };
 
         let v_instance = v_tree.new_node(VNode::ModuleInstantiation {
             module: module.name.clone(),

@@ -23,6 +23,9 @@ enum Commands {
 
         #[clap(short, long, value_parser)]
         output: Option<std::path::PathBuf>,
+
+        #[clap(long)]
+        test: bool,
     },
 
     /// Simulates a Ripstop program
@@ -50,11 +53,7 @@ enum Commands {
     },
 }
 
-fn compile(input: std::path::PathBuf, output: Option<std::path::PathBuf>) -> i32 {
-    let inputpath = input.clone();
-
-    let input = std::fs::read_to_string(&inputpath).unwrap();
-
+fn compile(input: String, output: Option<std::path::PathBuf>) -> i32 {
     let mut a = match parse(&input) {
         Ok(x) => x,
         Err(e) => {
@@ -92,7 +91,33 @@ fn main() {
     let args = Args::parse();
 
     match args.command {
-        Commands::Build { input, output } => {
+        Commands::Build {
+            input,
+            output,
+            test,
+        } => {
+            let mut input = std::fs::read_to_string(&input).unwrap();
+            if test {
+                // This is a test suite .test file, so just extract the "### CODE" part
+                let lines: Vec<_> = input.split("\n").collect();
+                let mut result = vec![];
+                let mut found_code = false;
+                for line in lines.iter() {
+                    if line.starts_with("###") {
+                        if line.contains("### CODE") {
+                            found_code = true;
+                            continue;
+                        } else {
+                            found_code = false;
+                        }
+                    }
+
+                    if found_code {
+                        result.push(line.to_owned());
+                    }
+                }
+                input = result.join("\n");
+            }
             std::process::exit(compile(input, output));
         }
         Commands::Test { input } => {

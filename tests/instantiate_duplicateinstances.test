@@ -12,5 +12,4 @@ module instantiation(bits<4> a) -> (bits<4> b) {
 }
 
 ### OUTPUT
-thread 'main' panicked at 'Cannot have multiple instantiations with name my_shifter!', ripstop/src/ir.rs:753:17
-note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+Instantiated shifter as my_shifter in module instantiation twice
