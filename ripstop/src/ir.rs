@@ -76,7 +76,7 @@ impl BinaryOperator {
 
 #[derive(Debug, Clone)]
 pub struct VariableReference {
-    pub variable: String,
+    pub variable: VariablePath,
     pub time: TimeReference,
 }
 
@@ -84,7 +84,7 @@ impl VariableReference {
     fn from_ast(ast: &Tree<ASTNode>, node: NodeId) -> Self {
         match &ast.get_node(node).unwrap().data.node_type {
             ASTNodeType::VariableReference { var_id } => Self {
-                variable: var_id.to_string(),
+                variable: VariablePath::from_string(var_id.to_string()),
                 time: TimeReference::from_ast(ast, ast.get_first_child(node).unwrap().id),
             },
             _ => {
@@ -199,7 +199,7 @@ impl Expression {
     }
 
     /// Finds the oldest reference to the given variable in this expression
-    fn get_oldest_reference(&self, variable: &str) -> Option<i64> {
+    fn get_oldest_reference(&self, variable: &VariablePath) -> Option<i64> {
         match &self.expr {
             LogicalExpression::BinaryOperation {
                 operation: _,
@@ -242,7 +242,7 @@ impl Expression {
                 }
             }
             LogicalExpression::VariableReference(reference) => {
-                if reference.variable == variable {
+                if reference.variable.subset_of(&variable) {
                     if let TimeReference::Relative(offset) = reference.time {
                         Some(offset)
                     } else {
@@ -392,7 +392,7 @@ impl Expression {
 
 #[derive(Debug)]
 pub struct Block {
-    pub assignments: HashMap<String, Box<Expression>>,
+    pub assignments: HashMap<VariablePath, Box<Expression>>,
 }
 
 impl Block {
@@ -412,7 +412,7 @@ impl Block {
                 expr.shift_time(-offset);
                 if expr.depends_on_future() {
                     Err(CompileError::Causality {
-                        var_name: variable.clone(),
+                        var_name: variable.display(),
                         context: expr.context.clone(),
                     })
                 } else {
@@ -434,7 +434,7 @@ impl Block {
         ast: &Tree<ASTNode>,
         children: &[NodeId],
         declaration_allowed: bool,
-    ) -> CompileResult<HashMap<String, (i64, Box<Expression>)>> {
+    ) -> CompileResult<HashMap<VariablePath, (i64, Box<Expression>)>> {
         let mut result = CompileResult::new();
         let mut assignments = HashMap::new();
         for child in children.iter() {
@@ -457,7 +457,7 @@ impl Block {
                             );
                             if assignments.contains_key(&lhs.variable) {
                                 result.error(CompileError::MultipleAssignment {
-                                    var_name: lhs.variable.to_owned(),
+                                    var_name: lhs.variable.display(),
                                     context: ast.get_node(*child).unwrap().data.context.clone(),
                                 });
                                 return result;
@@ -477,7 +477,7 @@ impl Block {
                     for (k, v) in new_assignments.drain() {
                         if assignments.contains_key(&k) {
                             result.error(CompileError::MultipleAssignment {
-                                var_name: k,
+                                var_name: k.display(),
                                 context: ast.get_node(*child).unwrap().data.context.clone(),
                             });
                             return result;
@@ -515,7 +515,7 @@ impl Block {
     fn from_conditional_children(
         ast: &Tree<ASTNode>,
         children: &[NodeId],
-    ) -> CompileResult<HashMap<String, (i64, Box<Expression>)>> {
+    ) -> CompileResult<HashMap<VariablePath, (i64, Box<Expression>)>> {
         let mut result = CompileResult::new();
         if children.len() == 0 {
             // This must be after a else-if case, but with no following else.
@@ -561,7 +561,7 @@ impl Block {
 
                         if true_offset != false_offset {
                             result.error(CompileError::DifferentTimeAssignsInConditional {
-                                var_name: variable.clone(),
+                                var_name: variable.display(),
                                 first_assignment: iftrue.context.clone(),
                                 second_assignment: iffalse.context.clone(),
                             });
@@ -653,7 +653,7 @@ impl Block {
         result
     }
 
-    pub fn variable_reference_range(&self, varname: &str) -> std::ops::Range<i64> {
+    pub fn variable_reference_range(&self, varname: &VariablePath) -> std::ops::Range<i64> {
         let mut min = std::i64::MAX;
         let max = 0;
         for (_, v) in self.assignments.iter() {
@@ -720,6 +720,142 @@ impl ModuleDeclaration {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+enum VariablePathSegment {
+    Name(String),
+}
+
+/// Represents a path to a variable
+///
+/// For example, "foo" is a variable path. So is "foo.bar",
+/// and "some_instance.x", and "foo.arr[5]", and "foo.arr"
+///
+/// Note that if "some_instance" is a module instantiation, then
+/// "some_instance" itself isn't a variable path
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+pub struct VariablePath {
+    segments: Vec<VariablePathSegment>,
+}
+
+impl std::fmt::Display for VariablePath {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let mut is_first = true;
+        for segment in self.segments.iter() {
+            if !is_first {
+                write!(f, ".")?;
+            }
+            match segment {
+                VariablePathSegment::Name(s) => write!(f, "{}", s)?,
+            }
+            is_first = false;
+        }
+        Ok(())
+    }
+}
+
+impl VariablePath {
+    pub fn from_root<T: Into<String>>(name: T) -> Self {
+        Self {
+            segments: vec![VariablePathSegment::Name(name.into())],
+        }
+    }
+
+    pub fn from_string<T: Into<String>>(name: T) -> Self {
+        let name: String = name.into();
+        let segments: Vec<_> = name
+            .split(".")
+            .map(|name| VariablePathSegment::Name(name.to_owned()))
+            .collect();
+        Self { segments }
+    }
+
+    /// Create a new path where this path is "under" the other path
+    pub fn put_under(&self, other: Self) -> Self {
+        let segments: Vec<_> = other
+            .segments
+            .iter()
+            .chain(self.segments.iter())
+            .cloned()
+            .collect();
+        Self { segments }
+    }
+
+    pub fn display(&self) -> String {
+        format!("{}", self)
+    }
+
+    /// Return true if this path is a subset of (or the same as) the other path
+    pub fn subset_of(&self, other: &Self) -> bool {
+        if self.segments.len() < other.segments.len() {
+            return false;
+        }
+        self.segments
+            .iter()
+            .zip(other.segments.iter())
+            .all(|(my_segment, other_segment)| my_segment == other_segment)
+    }
+
+    /// Find all the leaf paths if this variable is of the given type
+    pub fn leaf_paths(&self, ty: &Type) -> Vec<(VariablePath, Type)> {
+        match ty {
+            Type::Bit | Type::Bits { .. } => {
+                vec![(self.clone(), ty.clone())]
+            }
+            Type::Struct(s) => s
+                .fields
+                .iter()
+                .flat_map(|field| {
+                    let mut member_path = self.clone();
+                    member_path
+                        .segments
+                        .push(VariablePathSegment::Name(field.name.clone()));
+                    member_path.leaf_paths(&field.member_type)
+                })
+                .collect(),
+            Type::None => {
+                panic!("This type should never exist!");
+            }
+        }
+    }
+
+    /// Find all child paths from this path given the type. Note the distinction from
+    /// leaf_paths, which returns only leaf paths: This function returns leafs and all
+    /// parents up to (and including) self.
+    pub fn child_paths(&self, ty: &Type) -> Vec<(VariablePath, Type)> {
+        match ty {
+            Type::Bit | Type::Bits { .. } => {
+                vec![(self.clone(), ty.clone())]
+            }
+            Type::Struct(s) => s
+                .fields
+                .iter()
+                .flat_map(|field| {
+                    let mut member_path = self.clone();
+                    member_path
+                        .segments
+                        .push(VariablePathSegment::Name(field.name.clone()));
+                    member_path.leaf_paths(&field.member_type)
+                })
+                .chain(std::iter::once((self.clone(), ty.clone())))
+                .collect(),
+            Type::None => {
+                panic!("This type should never exist!");
+            }
+        }
+    }
+
+    pub fn to_verilog_name(&self) -> String {
+        let names: Vec<String> = self
+            .segments
+            .iter()
+            .map(|x| match x {
+                VariablePathSegment::Name(s) => s.to_owned(),
+            })
+            .collect();
+        names.join("_")
+    }
+}
+
 #[derive(Debug)]
 pub struct Module {
     pub name: String,
@@ -727,8 +863,8 @@ pub struct Module {
     pub inputs: Vec<String>,
     pub outputs: Vec<String>,
     pub instantiations: HashMap<String, String>,
-    pub variables: HashMap<String, Type>,
-    pub reset_values: HashMap<String, (NumberLiteral, i64)>,
+    pub variables: HashMap<VariablePath, Type>,
+    pub reset_values: HashMap<VariablePath, (NumberLiteral, i64)>,
     pub block: Block,
 }
 
@@ -788,6 +924,15 @@ impl Module {
             .chain(in_values.iter().map(|(a, b)| (b.to_string(), a)))
             .chain(out_values.iter().map(|(a, b)| (b.to_string(), a)))
             .map(|(name, t)| (name, types.lookup(t).unwrap()))
+            .collect();
+
+        // Expand all the values into their "leaf" primary variables
+        let variables: HashMap<VariablePath, Type> = variables
+            .iter()
+            .flat_map(|(varname, ty)| {
+                let varname = VariablePath::from_root(varname);
+                varname.child_paths(ty)
+            })
             .chain(instantiations.iter().flat_map(|(instance, module)| {
                 let module = match modules.iter().filter(|m| &m.name == module).next() {
                     Some(m) => m,
@@ -801,8 +946,15 @@ impl Module {
                 };
                 let mut module_variables = vec![];
                 for (var_type, var_name) in module.inputs.iter().chain(module.outputs.iter()) {
-                    module_variables
-                        .push((format!("{}.{}", instance, var_name), var_type.to_owned()));
+                    let path = VariablePath {
+                        segments: vec![
+                            VariablePathSegment::Name(instance.clone()),
+                            VariablePathSegment::Name(var_name.clone()),
+                        ],
+                    };
+                    for path in path.child_paths(var_type).into_iter() {
+                        module_variables.push(path);
+                    }
                 }
                 module_variables
             }))
@@ -853,6 +1005,7 @@ impl Module {
                 }
             })
             .collect();
+        println!("{:#?}", reset_values);
 
         // Now build the assigns themselves
         let block = logerror!(
@@ -886,5 +1039,70 @@ impl Module {
         });
 
         result
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::types::*;
+    use std::sync::Arc;
+
+    #[test]
+    fn test_path_from_str() {
+        assert_eq!(VariablePath::from_string("foo").display(), "foo");
+        assert_eq!(
+            VariablePath::from_string("foo.bar.baz").display(),
+            "foo.bar.baz"
+        );
+    }
+
+    #[test]
+    fn test_leaf_is_leaf() {
+        let var = VariablePath::from_root("foo");
+        let ty = Type::Bits { size: 16 };
+        let paths = var.leaf_paths(&ty);
+        assert_eq!(paths.len(), 1);
+        assert_eq!(paths[0].0, var);
+    }
+
+    #[test]
+    fn test_path_leafs() {
+        let var = VariablePath::from_root("foo");
+        let ty = Type::Struct(Arc::new(StructDefinition {
+            name: "some_struct_def".to_string(),
+            fields: vec![
+                StructField {
+                    name: "one_bit".to_string(),
+                    member_type: Type::Bit,
+                },
+                StructField {
+                    name: "some_more_bits".to_string(),
+                    member_type: Type::Bits { size: 16 },
+                },
+                StructField {
+                    name: "another_struct".to_string(),
+                    member_type: Type::Struct(Arc::new(StructDefinition {
+                        name: "second_struct_def".to_string(),
+                        fields: vec![
+                            StructField {
+                                name: "a".to_string(),
+                                member_type: Type::Bits { size: 5 },
+                            },
+                            StructField {
+                                name: "b".to_string(),
+                                member_type: Type::Bit,
+                            },
+                        ],
+                    })),
+                },
+            ],
+        }));
+        let paths = var.leaf_paths(&ty);
+        let paths: Vec<_> = paths.iter().map(|(x, _)| x.clone()).collect();
+
+        assert!(paths.iter().all(|path| path.subset_of(&var)));
+        assert!(paths.iter().all(|path| !var.subset_of(&path)));
+        assert!(paths.iter().all(|path| path.subset_of(&path)));
     }
 }

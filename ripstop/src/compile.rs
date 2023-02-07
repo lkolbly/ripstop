@@ -1,8 +1,8 @@
 use crate::{
     ast::{ASTNode, ASTNodeType},
     error::{CompileError, CompileResult},
-    ir::ModuleDeclaration,
     ir::{BinaryOperator, Expression, LogicalExpression, Module, UnaryOperator},
+    ir::{ModuleDeclaration, VariablePath},
     logerror, noncriterr, singleerror,
     tree::{NodeId, Tree, TreeError},
     types::{PrimordialStructDefinition, Type, TypeDatabase},
@@ -523,7 +523,7 @@ fn compile_ir_expression(
 /// Some notes:
 /// * if `index` is a variant of `VNode` other than `VNode::Index {..}`, this method has undefined behavior
 fn compile_var_ref_from_string(
-    var_id: &str,
+    var_id: &VariablePath,
     t_offset: Option<i64>,
     index: Option<VNode>,
 ) -> Result<Tree<VNode>, TreeError> {
@@ -532,7 +532,7 @@ fn compile_var_ref_from_string(
     //Creating the `VariableReference`
     let var_id = match t_offset {
         Some(offset) => variable_name_relative(var_id, offset),
-        None => var_id.to_string(),
+        None => var_id.to_verilog_name(),
     };
     let var_ref = tree.new_node(VNode::VariableReference { var_id });
 
@@ -691,14 +691,36 @@ pub fn compile_module(
         let mut in_values: Vec<_> = module
             .inputs
             .iter()
-            .map(|input| (input, module.variables.get(input).unwrap()))
+            .flat_map(|input| {
+                let ty = module
+                    .variables
+                    .get(&VariablePath::from_root(input))
+                    .unwrap();
+                let leafs = VariablePath::from_root(input).leaf_paths(ty);
+                let leafs: Vec<_> = leafs
+                    .iter()
+                    .map(|(name, ty)| (name.to_verilog_name(), ty.clone()))
+                    .collect();
+                leafs
+            })
             .map(|(variable, vtype)| (variable.to_string(), vtype.bit_size()))
             .collect();
 
         let out_values: Vec<_> = module
             .outputs
             .iter()
-            .map(|input| (input, module.variables.get(input).unwrap()))
+            .flat_map(|output| {
+                let ty = module
+                    .variables
+                    .get(&VariablePath::from_root(output))
+                    .unwrap();
+                let leafs = VariablePath::from_root(output).leaf_paths(ty);
+                let leafs: Vec<_> = leafs
+                    .iter()
+                    .map(|(name, ty)| (name.to_verilog_name(), ty.clone()))
+                    .collect();
+                leafs
+            })
             .map(|(variable, vtype)| (variable.to_string(), vtype.bit_size()))
             .collect();
 
@@ -714,8 +736,18 @@ pub fn compile_module(
         })
     };
 
-    let is_input = |name: &str| module.inputs.iter().any(|in_name| in_name == name);
-    let is_output = |name: &str| module.outputs.iter().any(|out_name| out_name == name);
+    let is_input = |name: &VariablePath| {
+        module
+            .inputs
+            .iter()
+            .any(|in_name| name.subset_of(&VariablePath::from_root(in_name)))
+    };
+    let is_output = |name: &VariablePath| {
+        module
+            .outputs
+            .iter()
+            .any(|out_name| name.subset_of(&VariablePath::from_root(out_name)))
+    };
 
     // Create a VNode to hold things that occur at the positive clock edge (i.e. always @(posedge clk))
     let clock_edge = v_tree.new_node(VNode::AlwaysBegin {
@@ -740,27 +772,43 @@ pub fn compile_module(
             instance: instance.to_owned(),
         });
 
-        for (vartype, portname, varname, declare) in module
+        for (vartype, portname, varname, declare, is_input) in module
             .inputs
             .iter()
-            .chain(module.outputs.iter())
-            .map(|(t, n)| (t.clone(), n.to_owned(), format!("{}_{}", instance, n), true))
+            .map(|(ty, name)| (ty, name, true))
+            .chain(module.outputs.iter().map(|(ty, name)| (ty, name, false)))
+            .flat_map(|(ty, var_name, is_input)| {
+                let path = VariablePath::from_root(var_name);
+                let paths: Vec<_> = path
+                    .leaf_paths(ty)
+                    .iter()
+                    .map(|(path, ty)| (path.clone(), ty.clone(), is_input))
+                    .collect();
+                paths
+            })
+            .map(|(path, ty, is_input)| {
+                let var_name = path.put_under(VariablePath::from_root(instance));
+                (path, var_name, ty, is_input)
+            })
+            .map(|(port_name, var_name, ty, is_input)| (ty, port_name, var_name, true, is_input))
             .chain(std::iter::once((
                 Type::Bit,
-                "clk".to_owned(),
-                "clk".to_owned(),
+                VariablePath::from_root("clk"),
+                VariablePath::from_root("clk"),
                 false,
+                true,
             )))
             .chain(std::iter::once((
                 Type::Bit,
-                "rst".to_owned(),
-                "rst".to_owned(),
+                VariablePath::from_root("rst"),
+                VariablePath::from_root("rst"),
                 false,
+                true,
             )))
         {
             let v_port = v_tree.new_node(VNode::ModuleInstantiationVariable {
-                portname: portname.to_owned(),
-                variable: varname.clone(),
+                portname: portname.to_verilog_name(),
+                variable: varname.to_verilog_name(),
             });
             singleerror!(result, v_tree.append_to(v_instance, v_port));
 
@@ -770,22 +818,16 @@ pub fn compile_module(
                     bits: vartype.bit_size(),
                 });
                 let v_varref = v_tree.new_node(VNode::VariableReference {
-                    var_id: varname.clone(),
+                    var_id: varname.to_verilog_name(),
                 });
                 singleerror!(result, v_tree.append_to(v_decl, v_varref));
                 singleerror!(result, v_tree.append_to(v_head, v_decl));
 
                 // And assign it appropriately
-                let is_input = module
-                    .inputs
-                    .iter()
-                    .filter(|(_, n)| n == &portname)
-                    .next()
-                    .is_some();
                 if is_input {
                     let v_assign = v_tree.new_node(VNode::AssignKeyword {});
                     let lhs = v_tree.new_node(VNode::VariableReference {
-                        var_id: varname.clone(),
+                        var_id: varname.to_verilog_name(),
                     });
                     let rhs = v_tree.new_node(VNode::VariableReference {
                         var_id: variable_name_relative(&varname, 0),
@@ -808,7 +850,7 @@ pub fn compile_module(
                         var_id: variable_name_relative(&varname, 0),
                     });
                     let rhs = v_tree.new_node(VNode::VariableReference {
-                        var_id: varname.clone(),
+                        var_id: varname.to_verilog_name(),
                     });
                     singleerror!(result, v_tree.append_to(v_assign, lhs));
                     singleerror!(result, v_tree.append_to(v_assign, rhs));
@@ -821,7 +863,15 @@ pub fn compile_module(
     }
 
     //Register chain creation for each variable
-    for (name, _vartype) in module.variables.clone().iter() {
+    for (name, vartype) in module.variables.clone().iter() {
+        // Only create register chains for leaf variables
+        match vartype {
+            Type::Bit | Type::Bits { .. } => {}
+            _ => {
+                continue;
+            }
+        }
+
         //Create the possible index for this node for use with `compile_var_ref_from_string`
         let index = None;
         /*let index = match vartype {
@@ -862,7 +912,7 @@ pub fn compile_module(
                     Some(e) => e,
                     None => {
                         result.error(CompileError::VariableNotAssigned {
-                            var_name: name.clone(),
+                            var_name: name.display(),
                         });
                         continue;
                     }
@@ -1149,8 +1199,8 @@ pub fn compile_module(
     result
 }
 
-fn variable_name_relative(var_id: &str, index: i64) -> String {
-    let var_id = var_id.to_owned().replace(".", "_");
+fn variable_name_relative(var_id: &VariablePath, index: i64) -> String {
+    let var_id = var_id.to_verilog_name();
     if index == 1 {
         format!("{}_next", var_id)
     } else {

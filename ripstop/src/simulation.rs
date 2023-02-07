@@ -9,6 +9,7 @@ use thiserror::Error;
 use crate::ast::*;
 use crate::compile::*;
 use crate::error::CompileError;
+use crate::ir::VariablePath;
 use crate::parse::{parse, Range};
 use crate::types::Type;
 use crate::verilog_ast::verilog_ast_to_string;
@@ -102,11 +103,22 @@ impl LinearVariableMapping {
         Self { variables: x }
     }
 
-    fn from_variable_names(variable_table: &HashMap<String, Type>, variables: &[String]) -> Self {
+    fn from_variable_names(
+        variable_table: &HashMap<VariablePath, Type>,
+        variables: &[String],
+    ) -> Self {
         let variables: Vec<_> = variables
             .iter()
             .map(|varname| {
-                let t = variable_table.get(varname).unwrap();
+                let t = variable_table
+                    .get(&VariablePath::from_root(varname))
+                    .unwrap();
+                match t {
+                    Type::Bit | Type::Bits { .. } => {
+                        // We're good
+                    }
+                    _ => todo!("LinearVariableMapping does not directly support structs... yet"),
+                }
                 (varname.to_string(), t.clone())
             })
             .collect();
