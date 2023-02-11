@@ -152,6 +152,14 @@ impl<T> CompileResult<T> {
     pub fn ok(&mut self, value: T) {
         self.result = Some(value);
     }
+
+    pub fn unwrap(self) -> T {
+        if self.errors.len() > 0 {
+            panic!("CompileResult has errors: {:?}", self.errors);
+        }
+        self.result
+            .expect("If result is None, errors must be non-empty")
+    }
 }
 
 /// result should be a CompileResult
