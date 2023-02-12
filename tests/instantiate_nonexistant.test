@@ -8,3 +8,11 @@ module instantiate_nonexistant(bits<4> a) -> (bits<4> b) {
 
 ### OUTPUT
 Could not find module shifter instantated as my_shifter
+
+Undeclared variable on line 5 col 12:
+    b[t] = my_shifter.b[t];
+           ^
+
+Undeclared variable on line 4 col 23:
+    my_shifter.a[t] = a[t];
+                      ^

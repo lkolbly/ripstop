@@ -373,9 +373,9 @@ impl Range {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct NumberLiteral {
-    pub size_bits: usize,
+    pub ty: Type,
     pub value: u128, // This is the maximum supported integer literal
 }
 
@@ -423,7 +423,8 @@ impl NumberLiteral {
             Rule::pos_integer => {
                 let int: u128 = full_str.parse().unwrap();
                 return Self {
-                    size_bits: 64,
+                    // TODO: Compute the actual minimum size
+                    ty: Type::Literal { minimum_size: 64 },
                     value: int,
                 };
             }
@@ -466,7 +467,7 @@ impl NumberLiteral {
                 }
 
                 Self {
-                    size_bits: num_bits,
+                    ty: Type::Bits { size: num_bits },
                     value,
                 }
             }
@@ -524,49 +525,49 @@ mod test {
             (
                 "5'd16",
                 NumberLiteral {
-                    size_bits: 5,
+                    ty: Type::Bits { size: 5 },
                     value: 16,
                 },
             ),
             (
                 "6'b10100",
                 NumberLiteral {
-                    size_bits: 6,
+                    ty: Type::Bits { size: 6 },
                     value: 20,
                 },
             ),
             (
                 "32'hffab",
                 NumberLiteral {
-                    size_bits: 32,
+                    ty: Type::Bits { size: 32 },
                     value: 0xffab,
                 },
             ),
             (
                 "48'habcd_ef01_2345",
                 NumberLiteral {
-                    size_bits: 48,
+                    ty: Type::Bits { size: 48 },
                     value: 0xabcd_ef01_2345,
                 },
             ),
             (
                 "128'hffffffff_ffffffff_ffffffff_ffffffff",
                 NumberLiteral {
-                    size_bits: 128,
+                    ty: Type::Bits { size: 128 },
                     value: 0xffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff,
                 },
             ),
             (
                 "1'h1",
                 NumberLiteral {
-                    size_bits: 1,
+                    ty: Type::Bits { size: 1 },
                     value: 1,
                 },
             ),
             (
                 "1'b0",
                 NumberLiteral {
-                    size_bits: 1,
+                    ty: Type::Bits { size: 1 },
                     value: 0,
                 },
             ),

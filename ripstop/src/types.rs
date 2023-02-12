@@ -16,6 +16,7 @@ pub enum Type {
     None,
     Bit,
     Bits { size: usize },
+    Literal { minimum_size: usize },
     Struct(Arc<StructDefinition>),
 }
 
@@ -24,6 +25,7 @@ impl Display for Type {
         let s = match self {
             Type::Bit => "bit".to_string(),
             Type::Bits { size } => format!("bits<{size}>"),
+            Type::Literal { minimum_size } => format!("int literal ({minimum_size} bits)"),
             Type::Struct(_) => todo!(),
             //Alternatively, `None` could become `_`
             Type::None => "[TYPELESS]".to_string(),
@@ -40,7 +42,8 @@ impl Type {
             }
             Self::Bit => 1,
             Self::Bits { size } => *size,
-            Type::Struct(s) => s.fields.iter().map(|f| f.member_type.bit_size()).sum(),
+            Self::Literal { minimum_size } => *minimum_size,
+            Self::Struct(s) => s.fields.iter().map(|f| f.member_type.bit_size()).sum(),
         }
     }
 

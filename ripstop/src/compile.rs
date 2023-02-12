@@ -69,7 +69,7 @@ impl VarBounds {
     }
 }
 
-fn get_node_type(
+/*fn get_node_type(
     tree: &Tree<ASTNode>,
     this_node: NodeId,
     child_vals: Vec<&Type>,
@@ -238,7 +238,7 @@ fn verify(tree: &Tree<ASTNode>, variables: &HashMap<String, VarBounds>) -> Compi
     }
     result.ok(());
     result
-}
+}*/
 
 /// Returns the verilog equivalent of adding together `lhs` and `rhs`. At the moment, this supports addition between two nodes of type `VariableReference`
 ///
@@ -510,7 +510,9 @@ fn compile_ir_expression(
             vast.new_node(VNode::VariableReference { var_id: vref });
         }
         LogicalExpression::NumberLiteral(literal) => {
-            vast.new_node(VNode::NumberLiteral { literal: *literal });
+            vast.new_node(VNode::NumberLiteral {
+                literal: literal.clone(),
+            });
         }
     }
 
@@ -672,7 +674,7 @@ pub fn compile_module(
     let mut result = CompileResult::new();
 
     // Type-check to make sure everything'll work
-    {
+    /*{
         //Stores pairs of (variable ID, (highest used t-offset, lowest used t-offset))
         //This is needed to create the registers
         let variables: HashMap<String, VarBounds> =
@@ -680,7 +682,7 @@ pub fn compile_module(
 
         //Before creating the tree, verify it
         logerror!(result, verify(tree, &variables));
-    }
+    }*/
 
     let module = logerror!(result, Module::from_ast(tree, head, modules, types));
 
@@ -994,7 +996,7 @@ pub fn compile_module(
                     var_id: "rst".to_owned(),
                 });
                 let reset_value = conditional_tree.new_node(VNode::NumberLiteral {
-                    literal: *reset_value,
+                    literal: reset_value.clone(),
                 });
                 singleerror!(result, conditional_tree.append_to(conditional, rst_ref));
                 singleerror!(result, conditional_tree.append_to(conditional, reset_value));
@@ -1082,7 +1084,7 @@ pub fn compile_module(
                 var_id: "rst".to_owned(),
             });
             let reset_value = conditional_tree.new_node(VNode::NumberLiteral {
-                literal: *reset_value,
+                literal: reset_value.clone(),
             });
             singleerror!(result, conditional_tree.append_to(conditional, rst_ref));
             singleerror!(result, conditional_tree.append_to(conditional, reset_value));

@@ -9,10 +9,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::ast::{ASTNode, ASTNodeType, StringContext};
 use crate::error::{CompileError, CompileResult};
-use crate::logerror;
 use crate::parse::{NumberLiteral, Range};
 use crate::tree::{NodeId, Tree};
 use crate::types::{Type, TypeDatabase};
+use crate::{logerror, noncriterr};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TimeReference {
@@ -38,7 +38,7 @@ pub enum UnaryOperator {
     Index(Range),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum BinaryOperator {
     Addition,
     Subtraction,
@@ -134,7 +134,9 @@ impl Expression {
             ASTNodeType::VariableReference { var_id: _ } => {
                 LogicalExpression::VariableReference(VariableReference::from_ast(ast, nodeid))
             }
-            ASTNodeType::NumberLiteral(literal) => LogicalExpression::NumberLiteral(*literal),
+            ASTNodeType::NumberLiteral(literal) => {
+                LogicalExpression::NumberLiteral(literal.clone())
+            }
             ASTNodeType::Index { high, low } => LogicalExpression::UnaryOperation {
                 operation: UnaryOperator::Index(Range {
                     low: *low as u32,
@@ -308,31 +310,395 @@ impl Expression {
         }
     }
 
-    /// This function both gets the expression's type and performs typechecking
-    pub fn get_type(&self, variables: &HashMap<String, Type>) -> CompileResult<Type> {
+    fn perform_arithemetic(operator: BinaryOperator, lhs: u128, rhs: u128) -> u128 {
+        match operator {
+            BinaryOperator::Addition => lhs.checked_add(rhs).expect("Need bigint"),
+            BinaryOperator::Subtraction => {
+                lhs.checked_sub(rhs).expect("Need negative literal support")
+            }
+            BinaryOperator::BitwiseAnd => lhs & rhs,
+            BinaryOperator::BitwiseOr => lhs | rhs,
+            BinaryOperator::BitwiseXor => lhs ^ rhs,
+            _ => {
+                panic!("Must call perform_arithmetic with an arithmetical operator!");
+            }
+        }
+    }
+
+    fn perform_comparison(operator: BinaryOperator, lhs: u128, rhs: u128) -> bool {
+        match operator {
+            BinaryOperator::Equal => lhs == rhs,
+            BinaryOperator::Greater => lhs > rhs,
+            BinaryOperator::GreaterEq => lhs >= rhs,
+            BinaryOperator::Less => lhs < rhs,
+            BinaryOperator::LessEq => lhs <= rhs,
+            BinaryOperator::NotEqual => lhs != rhs,
+            _ => {
+                panic!("Must call perform_comparison with a comparison operator!");
+            }
+        }
+    }
+
+    fn combine_literals(
+        &self,
+        operator: BinaryOperator,
+        lhs: u128,
+        lhs_minimum_size: usize,
+        rhs: u128,
+        rhs_minimum_size: usize,
+    ) -> CompileResult<(Expression, Vec<(Type, StringContext)>)> {
         let mut result = CompileResult::new();
+        match operator {
+            BinaryOperator::Addition
+            | BinaryOperator::Subtraction
+            | BinaryOperator::BitwiseAnd
+            | BinaryOperator::BitwiseOr
+            | BinaryOperator::BitwiseXor => {
+                let newval = Self::perform_arithemetic(operator, lhs, rhs);
+                let new_size_bits: usize = (newval + 1)
+                    .next_power_of_two()
+                    .trailing_zeros()
+                    .try_into()
+                    .unwrap();
+                let new_size_bits = new_size_bits.max(lhs_minimum_size).max(rhs_minimum_size);
+                result.ok((
+                    Expression {
+                        expr: LogicalExpression::NumberLiteral(NumberLiteral {
+                            value: newval,
+                            ty: Type::Literal {
+                                minimum_size: new_size_bits,
+                            },
+                        }),
+                        context: self.context.clone(),
+                    },
+                    vec![(
+                        Type::Literal {
+                            minimum_size: new_size_bits,
+                        },
+                        self.context.clone(),
+                    )],
+                ));
+            }
+            BinaryOperator::Equal
+            | BinaryOperator::Greater
+            | BinaryOperator::GreaterEq
+            | BinaryOperator::Less
+            | BinaryOperator::LessEq
+            | BinaryOperator::NotEqual => {
+                let newval = Self::perform_comparison(operator, lhs, rhs);
+                result.ok((
+                    Expression {
+                        expr: LogicalExpression::NumberLiteral(NumberLiteral {
+                            value: if newval { 1 } else { 0 },
+                            ty: Type::Bits { size: 1 },
+                        }),
+                        context: self.context.clone(),
+                    },
+                    vec![(Type::Bits { size: 1 }, self.context.clone())],
+                ))
+            }
+            BinaryOperator::Concatenate => {
+                todo!("Throw an error that concatenating two number literals is not allowed");
+            }
+        }
+        result
+    }
+
+    /// This is a quick hack to work around Bit != Bits<1>
+    fn debit(ty: Type) -> Type {
+        match ty {
+            Type::Bit => Type::Bits { size: 1 },
+            x => x,
+        }
+    }
+
+    fn get_addlike_binary_op_type(
+        &self,
+        variables: &HashMap<VariablePath, Type>,
+        operator: BinaryOperator,
+        lhs: Expression,
+        lhs_type: Type,
+        rhs: Expression,
+        rhs_type: Type,
+    ) -> CompileResult<(Expression, Vec<(Type, StringContext)>)> {
+        let mut result = CompileResult::new();
+        let lhs_type = Self::debit(lhs_type);
+        let rhs_type = Self::debit(rhs_type);
+        match (&lhs_type, &rhs_type) {
+            (Type::Bits { size: lhs_size }, Type::Bits { size: rhs_size }) => {
+                // Both sides are bits: They must be the same size
+                if lhs_size == rhs_size {
+                    result.ok((self.clone(), vec![(lhs_type.clone(), self.context.clone())]));
+                } else {
+                    result.error(CompileError::MismatchedTypes {
+                        context: self.context.clone(),
+                        current_type: lhs_type.clone(),
+                        needed_type: rhs_type.clone(),
+                    });
+                }
+            }
+            (Type::Bits { size: typed_size }, Type::Literal { minimum_size })
+            | (Type::Literal { minimum_size }, Type::Bits { size: typed_size }) => {
+                // One side is a literal: The typed size must be sufficiently large
+                if *typed_size >= *minimum_size {
+                    result.ok((
+                        self.clone(),
+                        vec![(Type::Bits { size: *typed_size }, self.context.clone())],
+                    ));
+                } else {
+                    result.error(CompileError::LiteralTooBig {
+                        context: self.context.clone(),
+                        typed_size: *typed_size,
+                        literal_size: *minimum_size,
+                    });
+                }
+            }
+            (
+                Type::Literal {
+                    minimum_size: lhs_minimum_size,
+                },
+                Type::Literal {
+                    minimum_size: rhs_minimum_size,
+                },
+            ) => {
+                // Both sides are literals: Make the resulting type "sufficiently large"
+                let lhs = match &lhs.expr {
+                    LogicalExpression::NumberLiteral(lit) => lit,
+                    _ => panic!("The type is literal, but the value is not?"),
+                };
+                let rhs = match &rhs.expr {
+                    LogicalExpression::NumberLiteral(lit) => lit,
+                    _ => panic!("The type is literal, but the value is not?"),
+                };
+                result = self.combine_literals(
+                    operator,
+                    lhs.value,
+                    *lhs_minimum_size,
+                    rhs.value,
+                    *rhs_minimum_size,
+                );
+            }
+            _ => {
+                result.error(CompileError::MismatchedTypes {
+                    context: self.context.clone(),
+                    current_type: lhs_type.clone(),
+                    needed_type: rhs_type.clone(),
+                });
+            }
+        }
+        result
+    }
+
+    fn get_comparisonlike_binary_op_type(
+        &self,
+        variables: &HashMap<VariablePath, Type>,
+        operator: BinaryOperator,
+        lhs: Expression,
+        lhs_type: Type,
+        rhs: Expression,
+        rhs_type: Type,
+    ) -> CompileResult<(Expression, Vec<(Type, StringContext)>)> {
+        let mut result = CompileResult::new();
+        let lhs_type = Self::debit(lhs_type);
+        let rhs_type = Self::debit(rhs_type);
+        match (&lhs_type, &rhs_type) {
+            (Type::Bits { size: lhs_size }, Type::Bits { size: rhs_size }) => {
+                // Both sides are bits: They must be the same size
+                if lhs_size == rhs_size {
+                    result.ok((
+                        self.clone(),
+                        vec![(Type::Bits { size: 1 }, self.context.clone())],
+                    ));
+                } else {
+                    result.error(CompileError::MismatchedTypes {
+                        context: self.context.clone(),
+                        current_type: lhs_type.clone(),
+                        needed_type: rhs_type.clone(),
+                    });
+                }
+            }
+            (Type::Bits { size: typed_size }, Type::Literal { minimum_size })
+            | (Type::Literal { minimum_size }, Type::Bits { size: typed_size }) => {
+                // One side is a literal: The typed size must be sufficiently large
+                if *typed_size >= *minimum_size {
+                    result.ok((
+                        self.clone(),
+                        vec![(Type::Bits { size: 1 }, self.context.clone())],
+                    ));
+                } else {
+                    result.error(CompileError::LiteralTooBig {
+                        context: self.context.clone(),
+                        typed_size: *typed_size,
+                        literal_size: *minimum_size,
+                    });
+                }
+            }
+            (
+                Type::Literal {
+                    minimum_size: lhs_minimum_size,
+                },
+                Type::Literal {
+                    minimum_size: rhs_minimum_size,
+                },
+            ) => {
+                // Both sides are literals: Make the resulting type "sufficiently large"
+                let lhs = match &lhs.expr {
+                    LogicalExpression::NumberLiteral(lit) => lit,
+                    _ => panic!("The type is literal, but the value is not?"),
+                };
+                let rhs = match &rhs.expr {
+                    LogicalExpression::NumberLiteral(lit) => lit,
+                    _ => panic!("The type is literal, but the value is not?"),
+                };
+                result = self.combine_literals(
+                    operator,
+                    lhs.value,
+                    *lhs_minimum_size,
+                    rhs.value,
+                    *rhs_minimum_size,
+                );
+            }
+            _ => {
+                result.error(CompileError::MismatchedTypes {
+                    context: self.context.clone(),
+                    current_type: lhs_type.clone(),
+                    needed_type: rhs_type.clone(),
+                });
+            }
+        }
+        result
+    }
+
+    fn get_concatlike_binary_op_type(
+        &self,
+        variables: &HashMap<VariablePath, Type>,
+        operator: BinaryOperator,
+        lhs: Expression,
+        lhs_type: Type,
+        rhs: Expression,
+        rhs_type: Type,
+    ) -> CompileResult<(Expression, Vec<(Type, StringContext)>)> {
+        let mut result = CompileResult::new();
+        let lhs_type = Self::debit(lhs_type);
+        let rhs_type = Self::debit(rhs_type);
+        match (&lhs_type, &rhs_type) {
+            (Type::Bits { size: lhs_size }, Type::Bits { size: rhs_size }) => {
+                // Both sides are bits: The resulting type is the sum
+                result.ok((
+                    self.clone(),
+                    vec![(
+                        Type::Bits {
+                            size: lhs_size + rhs_size,
+                        },
+                        self.context.clone(),
+                    )],
+                ));
+            }
+            _ => {
+                // Both sides must be bits, anything else is an error
+                todo!("Both sides of a concat operator must be bits<N>, no literals permitted");
+            }
+        }
+        result
+    }
+
+    fn get_literal_value(&self) -> u128 {
         match &self.expr {
+            LogicalExpression::NumberLiteral(lit) => lit.value,
+            _ => {
+                panic!("Can't call get_literal_value on non-literal");
+            }
+        }
+    }
+
+    /// This function both gets the expression's type and performs typechecking
+    ///
+    /// Note that it returns a vec - in some situations, like conditionals, the
+    /// conditional may not have a single known type (since we don't know what we're
+    /// assigning to). For this, we return all the types from both branches, and let
+    /// the block code handle generating errors.
+    ///
+    /// If type checking passes, then this will return a single element.
+    pub fn get_type(
+        &self,
+        variables: &HashMap<VariablePath, Type>,
+    ) -> CompileResult<(Expression, Vec<(Type, StringContext)>)> {
+        let mut result = CompileResult::new();
+
+        match &self.expr {
+            LogicalExpression::NumberLiteral(NumberLiteral { ty, .. }) => {
+                result.ok((self.clone(), vec![(ty.clone(), self.context.clone())]));
+            }
+            LogicalExpression::VariableReference(VariableReference { variable, .. }) => {
+                if let Some(ty) = variables.get(variable) {
+                    result.ok((
+                        self.clone(),
+                        vec![(Self::debit(ty.clone()), self.context.clone())],
+                    ));
+                } else {
+                    result.error(CompileError::UndeclaredVariable {
+                        context: self.context.clone(),
+                    });
+                }
+            }
             LogicalExpression::BinaryOperation {
                 operation,
                 lhs,
                 rhs,
             } => {
+                // For binary operations, there are generally three cases:
+                // - Both sides are Bits
+                //     In this case, both sides must be the same type.
+                // - Both sides are Literal
+                //     In this case, the resulting type is adjusted to fit the value.
+                // - One side is literal, other is bits
+                //     In this case, the bits type must be bigger than minimum size
+
+                let (lhs, lhs_type) = logerror!(result, lhs.get_type(variables));
+                let (rhs, rhs_type) = logerror!(result, rhs.get_type(variables));
+
+                let lhs_type = Self::debit(lhs_type[0].0.clone());
+                let rhs_type = Self::debit(rhs_type[0].0.clone());
+
                 match operation {
                     BinaryOperator::Addition
                     | BinaryOperator::Subtraction
                     | BinaryOperator::BitwiseAnd
                     | BinaryOperator::BitwiseOr
-                    | BinaryOperator::BitwiseXor
-                    | BinaryOperator::Equal
-                    | BinaryOperator::NotEqual
+                    | BinaryOperator::BitwiseXor => {
+                        result = self.get_addlike_binary_op_type(
+                            variables,
+                            *operation,
+                            lhs,
+                            lhs_type.clone(),
+                            rhs,
+                            rhs_type.clone(),
+                        );
+                    }
+                    BinaryOperator::Equal
                     | BinaryOperator::Greater
                     | BinaryOperator::GreaterEq
                     | BinaryOperator::Less
-                    | BinaryOperator::LessEq => {
-                        // Must be the same type
+                    | BinaryOperator::LessEq
+                    | BinaryOperator::NotEqual => {
+                        result = self.get_comparisonlike_binary_op_type(
+                            variables,
+                            *operation,
+                            lhs,
+                            lhs_type.clone(),
+                            rhs,
+                            rhs_type.clone(),
+                        );
                     }
                     BinaryOperator::Concatenate => {
-                        // Type is the sum of the two children types
+                        result = self.get_concatlike_binary_op_type(
+                            variables,
+                            *operation,
+                            lhs,
+                            lhs_type.clone(),
+                            rhs,
+                            rhs_type.clone(),
+                        );
                     }
                 }
             }
@@ -340,53 +706,467 @@ impl Expression {
                 operation,
                 operatee,
             } => {
-                match operation {
-                    UnaryOperator::Negation => {
-                        // Same type
+                // For now, unary operations are simple: The operand must be a bits type
+                let (operand, operand_type) = logerror!(result, operatee.get_type(variables));
+                let operand_type = Self::debit(operand_type[0].0.clone());
+
+                match operand_type {
+                    Type::Bits { size } => {
+                        match operation {
+                            UnaryOperator::Negation => {
+                                result.ok((
+                                    self.clone(),
+                                    vec![(operand_type.clone(), self.context.clone())],
+                                ));
+                            }
+                            UnaryOperator::Index(idx) => {
+                                if idx.high > size as u32 {
+                                    todo!("Throw an error: You can't index a variable that's too small");
+                                } else {
+                                    result.ok((
+                                        self.clone(),
+                                        vec![(
+                                            Type::Bits {
+                                                size: (idx.high - idx.low + 1) as usize,
+                                            },
+                                            self.context.clone(),
+                                        )],
+                                    ));
+                                }
+                            }
+                        }
                     }
-                    UnaryOperator::Index(range) => {
-                        // The subset (...assuming the range is valid for this type)
+                    _ => {
+                        result.error(CompileError::MismatchedTypes {
+                            context: self.context.clone(),
+                            current_type: operand_type.clone(),
+                            // TODO: This is wrong, we need to make a specific error message for this case (unary ops require bits<N> type)
+                            needed_type: Type::Bits { size: 1 },
+                        });
                     }
                 }
-            }
-            LogicalExpression::VariableReference(VariableReference { variable, .. }) => {
-                //
-            }
-            LogicalExpression::NumberLiteral(literal) => {
-                let nbits = literal.size_bits;
             }
             LogicalExpression::Ternary {
                 condition,
                 lhs,
                 rhs,
             } => {
-                let condition_type = logerror!(result, condition.get_type(variables));
-                if condition_type.bit_size() != 1 {
-                    result.error(CompileError::MismatchedTypes {
-                        context: condition.context.clone(),
-                        current_type: condition_type,
-                        needed_type: Type::Bit,
-                    });
+                // First, check the condition
+                let (condition_expr, condition_type) =
+                    logerror!(result, condition.get_type(variables));
+                assert!(
+                    condition_type.len() == 1,
+                    "It's unclear what could cause this condition"
+                );
+                match &condition_type[0].0 {
+                    Type::Bit | Type::Bits { size: 1 } => {
+                        // We're good
+                    }
+                    _ => {
+                        result.error(CompileError::MismatchedTypes {
+                            context: condition_expr.context.clone(),
+                            current_type: condition_type[0].0.clone(),
+                            needed_type: Type::Bits { size: 1 },
+                        });
+                    }
                 }
 
-                // lhs and rhs must be the same type
-                let lhs_type = logerror!(result, lhs.get_type(variables));
-                let rhs_type = logerror!(result, rhs.get_type(variables));
-                if lhs_type != rhs_type {
-                    // TODO: This really isn't the right way to handle these errors. Type errors should be caught
-                    // at the assignment, inside the block, since the user doesn't see it as a ternary.
-                    result.error(CompileError::MismatchedTypes {
-                        context: condition.context.clone(),
-                        current_type: lhs_type.clone(),
-                        needed_type: rhs_type,
-                    });
+                // Check each branch, they must be the same or coercable to the same
+                let (lhs, lhs_type) = logerror!(result, lhs.get_type(variables));
+                let (rhs, rhs_type) = logerror!(result, rhs.get_type(variables));
+
+                if lhs_type.len() > 1 || rhs_type.len() > 1 {
+                    todo!("Need to handle conditionals whose branches fail");
                 }
 
-                result.ok(lhs_type);
+                let lhs_type = Self::debit(lhs_type[0].0.clone());
+                let rhs_type = Self::debit(rhs_type[0].0.clone());
+
+                match (&lhs_type, &rhs_type) {
+                    (Type::Bits { size: lhs_size }, Type::Bits { size: rhs_size }) => {
+                        if *lhs_size == *rhs_size {
+                            result
+                                .ok((self.clone(), vec![(lhs_type.clone(), self.context.clone())]));
+                        } else {
+                            result.ok((
+                                self.clone(),
+                                vec![
+                                    (lhs_type.clone(), lhs.context.clone()),
+                                    (rhs_type.clone(), rhs.context.clone()),
+                                ],
+                            ));
+                        }
+                    }
+                    (Type::Bits { size: lhs_size }, Type::Literal { minimum_size }) => {
+                        if minimum_size <= lhs_size {
+                            // Rewrite the smaller number literal
+                            result.ok((
+                                Expression {
+                                    expr: LogicalExpression::Ternary {
+                                        condition: condition.clone(),
+                                        lhs: Box::new(lhs.clone()),
+                                        rhs: Box::new(Expression {
+                                            expr: LogicalExpression::NumberLiteral(NumberLiteral {
+                                                ty: Type::Bits { size: *lhs_size },
+                                                value: rhs.get_literal_value(),
+                                            }),
+                                            context: rhs.context.clone(),
+                                        }),
+                                    },
+                                    context: self.context.clone(),
+                                },
+                                vec![(Type::Bits { size: *lhs_size }, self.context.clone())],
+                            ));
+                        } else {
+                            result.ok((
+                                self.clone(),
+                                vec![
+                                    (lhs_type.clone(), lhs.context.clone()),
+                                    (rhs_type.clone(), rhs.context.clone()),
+                                ],
+                            ));
+                        }
+                    }
+                    (Type::Literal { minimum_size }, Type::Bits { size: rhs_size }) => {
+                        if minimum_size <= rhs_size {
+                            // Rewrite the smaller number literal
+                            result.ok((
+                                Expression {
+                                    expr: LogicalExpression::Ternary {
+                                        condition: condition.clone(),
+                                        lhs: Box::new(Expression {
+                                            expr: LogicalExpression::NumberLiteral(NumberLiteral {
+                                                ty: Type::Bits { size: *rhs_size },
+                                                value: lhs.get_literal_value(),
+                                            }),
+                                            context: lhs.context.clone(),
+                                        }),
+                                        rhs: Box::new(rhs.clone()),
+                                    },
+                                    context: self.context.clone(),
+                                },
+                                vec![(Type::Bits { size: *rhs_size }, self.context.clone())],
+                            ));
+                        } else {
+                            result.ok((
+                                self.clone(),
+                                vec![
+                                    (lhs_type.clone(), lhs.context.clone()),
+                                    (rhs_type.clone(), rhs.context.clone()),
+                                ],
+                            ));
+                        }
+                    }
+                    (
+                        Type::Literal {
+                            minimum_size: lhs_minimum_size,
+                        },
+                        Type::Literal {
+                            minimum_size: rhs_minimum_size,
+                        },
+                    ) => {
+                        if lhs_minimum_size < rhs_minimum_size {
+                            result.ok((
+                                Expression {
+                                    expr: LogicalExpression::Ternary {
+                                        condition: condition.clone(),
+                                        lhs: Box::new(Expression {
+                                            expr: LogicalExpression::NumberLiteral(NumberLiteral {
+                                                ty: Type::Bits {
+                                                    size: *rhs_minimum_size,
+                                                },
+                                                value: lhs.get_literal_value(),
+                                            }),
+                                            context: lhs.context.clone(),
+                                        }),
+                                        rhs: Box::new(Expression {
+                                            expr: LogicalExpression::NumberLiteral(NumberLiteral {
+                                                ty: Type::Bits {
+                                                    size: *rhs_minimum_size,
+                                                },
+                                                value: rhs.get_literal_value(),
+                                            }),
+                                            context: rhs.context.clone(),
+                                        }),
+                                    },
+                                    context: self.context.clone(),
+                                },
+                                vec![(
+                                    Type::Bits {
+                                        size: *rhs_minimum_size,
+                                    },
+                                    self.context.clone(),
+                                )],
+                            ));
+                        } else {
+                            result.ok((
+                                Expression {
+                                    expr: LogicalExpression::Ternary {
+                                        condition: condition.clone(),
+                                        lhs: Box::new(Expression {
+                                            expr: LogicalExpression::NumberLiteral(NumberLiteral {
+                                                ty: Type::Bits {
+                                                    size: *lhs_minimum_size,
+                                                },
+                                                value: lhs.get_literal_value(),
+                                            }),
+                                            context: lhs.context.clone(),
+                                        }),
+                                        rhs: Box::new(Expression {
+                                            expr: LogicalExpression::NumberLiteral(NumberLiteral {
+                                                ty: Type::Bits {
+                                                    size: *lhs_minimum_size,
+                                                },
+                                                value: rhs.get_literal_value(),
+                                            }),
+                                            context: rhs.context.clone(),
+                                        }),
+                                    },
+                                    context: self.context.clone(),
+                                },
+                                vec![(
+                                    Type::Bits {
+                                        size: *lhs_minimum_size,
+                                    },
+                                    self.context.clone(),
+                                )],
+                            ));
+                        }
+                    }
+                    _ => {
+                        panic!("Unexpected types");
+                    }
+                }
             }
         }
-        todo!();
         result
+    }
+}
+
+#[cfg(test)]
+mod typecheck_test {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn typedb() -> HashMap<VariablePath, Type> {
+        let mut db = HashMap::new();
+        db.insert(VariablePath::from_root("foo_u17"), Type::Bits { size: 17 });
+        db.insert(
+            VariablePath::from_root("condition_u1"),
+            Type::Bits { size: 1 },
+        );
+        db
+    }
+
+    fn mk_context() -> StringContext {
+        StringContext {
+            line: 1,
+            col: 1,
+            line_str: "potato".to_owned(),
+            node_str: "potato".to_owned(),
+        }
+    }
+
+    fn mk_lit(lit: NumberLiteral) -> Expression {
+        Expression {
+            expr: LogicalExpression::NumberLiteral(lit),
+            context: mk_context(),
+        }
+    }
+
+    fn mk_varref(var: VariablePath) -> Expression {
+        Expression {
+            expr: LogicalExpression::VariableReference(VariableReference {
+                variable: var,
+                time: TimeReference::Relative(0),
+            }),
+            context: mk_context(),
+        }
+    }
+
+    fn mk_binop(op: BinaryOperator, lhs: Expression, rhs: Expression) -> Expression {
+        Expression {
+            expr: LogicalExpression::BinaryOperation {
+                operation: op,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            },
+            context: mk_context(),
+        }
+    }
+
+    fn mk_unop(op: UnaryOperator, operand: Expression) -> Expression {
+        Expression {
+            expr: LogicalExpression::UnaryOperation {
+                operation: op,
+                operatee: Box::new(operand),
+            },
+            context: mk_context(),
+        }
+    }
+
+    fn mk_ternary(condition: Expression, iftrue: Expression, iffalse: Expression) -> Expression {
+        Expression {
+            expr: LogicalExpression::Ternary {
+                condition: Box::new(condition),
+                lhs: Box::new(iftrue),
+                rhs: Box::new(iffalse),
+            },
+            context: mk_context(),
+        }
+    }
+
+    fn singletype(mut ts: Vec<(Type, StringContext)>) -> Type {
+        assert_eq!(ts.len(), 1);
+        ts[0].0.clone()
+    }
+
+    #[test]
+    fn typecheck_literal() {
+        let expr = mk_lit(NumberLiteral {
+            ty: Type::Literal { minimum_size: 15 },
+            value: 5,
+        });
+        let (e, ts) = expr.get_type(&HashMap::new()).unwrap();
+        assert_eq!(singletype(ts), Type::Literal { minimum_size: 15 });
+
+        let expr = mk_lit(NumberLiteral {
+            ty: Type::Literal { minimum_size: 17 },
+            value: 6,
+        });
+        let (e, ts) = expr.get_type(&HashMap::new()).unwrap();
+        assert_eq!(singletype(ts), Type::Literal { minimum_size: 17 });
+    }
+
+    #[test]
+    fn typecheck_variable() {
+        let expr = mk_varref(VariablePath::from_root("foo_u17"));
+        let (e, ts) = expr.get_type(&typedb()).unwrap();
+        assert_eq!(singletype(ts), Type::Bits { size: 17 });
+    }
+
+    #[test]
+    fn typecheck_add_variables() {
+        let expr = mk_binop(
+            BinaryOperator::Addition,
+            mk_varref(VariablePath::from_root("foo_u17")),
+            mk_varref(VariablePath::from_root("foo_u17")),
+        );
+        let (e, ts) = expr.get_type(&typedb()).unwrap();
+        assert_eq!(singletype(ts), Type::Bits { size: 17 });
+    }
+
+    #[test]
+    fn typecheck_add_variable_lit() {
+        // If the variable is bigger, that's fine
+        let expr = mk_binop(
+            BinaryOperator::Addition,
+            mk_varref(VariablePath::from_root("foo_u17")),
+            mk_lit(NumberLiteral {
+                ty: Type::Literal { minimum_size: 5 },
+                value: 19,
+            }),
+        );
+        let (e, ts) = expr.get_type(&typedb()).unwrap();
+        assert_eq!(singletype(ts), Type::Bits { size: 17 });
+
+        // If the literal is bigger, that's not acceptable
+        let expr = mk_binop(
+            BinaryOperator::Addition,
+            mk_varref(VariablePath::from_root("foo_u17")),
+            mk_lit(NumberLiteral {
+                ty: Type::Literal { minimum_size: 100 },
+                value: 19,
+            }),
+        );
+        assert_eq!(expr.get_type(&typedb()).errors.len(), 1);
+    }
+
+    #[test]
+    fn typecheck_add_lit_lit() {
+        let expr = mk_binop(
+            BinaryOperator::Addition,
+            mk_lit(NumberLiteral {
+                ty: Type::Literal { minimum_size: 1 },
+                value: 1,
+            }),
+            mk_lit(NumberLiteral {
+                ty: Type::Literal { minimum_size: 15 },
+                value: 32767,
+            }),
+        );
+        let (e, ts) = expr.get_type(&typedb()).unwrap();
+        assert_eq!(singletype(ts), Type::Literal { minimum_size: 16 });
+    }
+
+    #[test]
+    fn typecheck_unary_op() {
+        let expr = mk_unop(
+            UnaryOperator::Negation,
+            mk_varref(VariablePath::from_root("foo_u17")),
+        );
+        let (e, ts) = expr.get_type(&typedb()).unwrap();
+        assert_eq!(singletype(ts), Type::Bits { size: 17 });
+    }
+
+    #[test]
+    fn typecheck_ternary() {
+        let expr = mk_ternary(
+            mk_varref(VariablePath::from_root("condition_u1")),
+            mk_varref(VariablePath::from_root("foo_u17")),
+            mk_lit(NumberLiteral {
+                ty: Type::Literal { minimum_size: 17 },
+                value: 5,
+            }),
+        );
+        let (_, ts) = expr.get_type(&typedb()).unwrap();
+        assert_eq!(singletype(ts), Type::Bits { size: 17 });
+
+        // Error if the condition isn't bits<1>
+        let expr = mk_ternary(
+            mk_varref(VariablePath::from_root("foo_u17")),
+            mk_varref(VariablePath::from_root("foo_u17")),
+            mk_varref(VariablePath::from_root("foo_u17")),
+        );
+        let res = expr.get_type(&typedb());
+        assert_eq!(res.errors.len(), 1);
+
+        // If the branches don't agree, return both types
+        let expr = mk_ternary(
+            mk_varref(VariablePath::from_root("condition_u1")),
+            mk_varref(VariablePath::from_root("condition_u1")),
+            mk_varref(VariablePath::from_root("foo_u17")),
+        );
+        let (_, ts) = expr.get_type(&typedb()).unwrap();
+        assert_eq!(ts.len(), 2);
+        assert_eq!(ts[0].0, Type::Bits { size: 1 });
+        assert_eq!(ts[1].0, Type::Bits { size: 17 });
+
+        // If one of the branches is a compatible literal, coerce it
+        let expr = mk_ternary(
+            mk_varref(VariablePath::from_root("condition_u1")),
+            mk_varref(VariablePath::from_root("foo_u17")),
+            mk_lit(NumberLiteral {
+                ty: Type::Literal { minimum_size: 5 },
+                value: 3,
+            }),
+        );
+        let (_, ts) = expr.get_type(&typedb()).unwrap();
+        assert_eq!(singletype(ts), Type::Bits { size: 17 });
+
+        // If one of the branches is a bigger literal, return both
+        let expr = mk_ternary(
+            mk_varref(VariablePath::from_root("condition_u1")),
+            mk_varref(VariablePath::from_root("foo_u17")),
+            mk_lit(NumberLiteral {
+                ty: Type::Literal { minimum_size: 100 },
+                value: 314159265,
+            }),
+        );
+        let (_, ts) = expr.get_type(&typedb()).unwrap();
+        assert_eq!(ts.len(), 2);
+        assert_eq!(ts[0].0, Type::Bits { size: 17 });
+        assert_eq!(ts[1].0, Type::Literal { minimum_size: 100 });
     }
 }
 
@@ -812,6 +1592,9 @@ impl VariablePath {
                     member_path.leaf_paths(&field.member_type)
                 })
                 .collect(),
+            Type::Literal { .. } => {
+                panic!("Literal types are not expressable");
+            }
             Type::None => {
                 panic!("This type should never exist!");
             }
@@ -838,6 +1621,9 @@ impl VariablePath {
                 })
                 .chain(std::iter::once((self.clone(), ty.clone())))
                 .collect(),
+            Type::Literal { .. } => {
+                panic!("Literal types are not expressable");
+            }
             Type::None => {
                 panic!("This type should never exist!");
             }
@@ -1005,24 +1791,64 @@ impl Module {
                 }
             })
             .collect();
-        println!("{:#?}", reset_values);
 
         // Now build the assigns themselves
-        let block = logerror!(
+        let mut block = logerror!(
             result,
             Block::from_ast(ast, ast.get_node(head).unwrap().children.as_ref(), true,)
         );
 
         // Type-check everything
-        /*for (varname, expr) in block.assignments.iter() {
-            let expr_type = noncriterr!(result, expr.get_type(&variables));
-            let var_type = variables.get(varname).unwrap();
-            if let Some(expr_type) = expr_type {
-                if expr_type.bit_size() != var_type.bit_size() {
-                    // Error!
-                }
+        let mut new_assignments = HashMap::new();
+        for (varname, expr) in block.assignments.iter() {
+            let (new_expr, expr_type) = match noncriterr!(result, expr.get_type(&variables)) {
+                Some(x) => x,
+                None => continue,
+            };
+            if expr_type.len() == 0 {
+                assert!(result.errors.len() > 0);
+                continue;
             }
-        }*/
+            let var_type = match variables.get(varname) {
+                Some(x) => x,
+                None => {
+                    result.error(CompileError::UndeclaredVariable {
+                        context: new_expr.context.clone(),
+                    });
+                    continue;
+                }
+            };
+            let var_type = Expression::debit(var_type.clone());
+            let var_type = &var_type;
+            if expr_type.len() > 1 {
+                // Couldn't unify the types, emit an error for each incorrect one
+                for (ty, context) in expr_type.iter() {
+                    if ty != var_type {
+                        result.error(CompileError::MismatchedTypes {
+                            context: new_expr.context.clone(),
+                            current_type: ty.clone(),
+                            needed_type: var_type.clone(),
+                        });
+                    }
+                }
+            } else if &expr_type[0].0 != var_type {
+                // Unification succeeded, but got the wrong value
+                result.error(CompileError::MismatchedTypes {
+                    context: new_expr.context.clone(),
+                    current_type: expr_type[0].0.clone(),
+                    needed_type: var_type.clone(),
+                });
+            } else {
+                // Update the expr with the type-coerced one
+                new_assignments.insert(varname.clone(), Box::new(new_expr));
+            }
+        }
+        block.assignments = new_assignments;
+
+        // Don't successfully compile if we had any errors
+        if result.errors.len() > 0 {
+            return result;
+        }
 
         result.ok(Self {
             name: id.to_string(),

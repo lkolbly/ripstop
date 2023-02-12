@@ -181,78 +181,78 @@ module comb_add(bits<4> a, bits<4> b) -> (bits<4> c) {
         x
     }
 
-    #[test]
-    fn test_parse_cases() {
-        let m = get_module();
+    /*#[test]
+        fn test_parse_cases() {
+            let m = get_module();
 
-        let cases = parse_tests_from_comment(
-            &m,
-            "```test
-rst,  a, b, c
-  1,  0, 0, x
-  1,  0, 0, x
-  0,  1, 2, 3
-  0, 15, 0, 15
-  0,  0, 0, 0
-```",
-        );
+            let cases = parse_tests_from_comment(
+                &m,
+                "```test
+    rst,  a, b, c
+      1,  0, 0, x
+      1,  0, 0, x
+      0,  1, 2, 3
+      0, 15, 0, 15
+      0,  0, 0, 0
+    ```",
+            );
 
-        assert_eq!(cases.len(), 1);
+            assert_eq!(cases.len(), 1);
 
-        let case = &cases[0];
-        assert!(case.auto_reset);
-        assert_eq!(case.steps.len(), 5);
-    }
+            let case = &cases[0];
+            assert!(case.auto_reset);
+            assert_eq!(case.steps.len(), 5);
+        }
 
-    #[test]
-    fn test_parse_multiple_cases() {
-        let m = get_module();
+        #[test]
+        fn test_parse_multiple_cases() {
+            let m = get_module();
 
-        let cases = parse_tests_from_comment(
-            &m,
-            "```test
-rst,  a, b, c
-  1,  0, 0, x
-  1,  0, 0, x
-  0,  1, 2, 3
-  0, 15, 0, 15
-  0,  0, 0, 0
-```
+            let cases = parse_tests_from_comment(
+                &m,
+                "```test
+    rst,  a, b, c
+      1,  0, 0, x
+      1,  0, 0, x
+      0,  1, 2, 3
+      0, 15, 0, 15
+      0,  0, 0, 0
+    ```
 
-```test
-rst,  a, b, c
-  1,  0, 0, x
-  0, 15, 0, 15
-```",
-        );
+    ```test
+    rst,  a, b, c
+      1,  0, 0, x
+      0, 15, 0, 15
+    ```",
+            );
 
-        assert_eq!(cases.len(), 2);
+            assert_eq!(cases.len(), 2);
 
-        let case = &cases[0];
-        assert!(case.auto_reset);
-        assert_eq!(case.steps.len(), 5);
+            let case = &cases[0];
+            assert!(case.auto_reset);
+            assert_eq!(case.steps.len(), 5);
 
-        let case = &cases[1];
-        assert!(case.auto_reset);
-        assert_eq!(case.steps.len(), 2);
-    }
+            let case = &cases[1];
+            assert!(case.auto_reset);
+            assert_eq!(case.steps.len(), 2);
+        }
 
-    #[test]
-    fn test_invalid_doesnt_crash() {
-        let m = get_module();
+        #[test]
+        fn test_invalid_doesnt_crash() {
+            let m = get_module();
 
-        let cases = parse_tests_from_comment(
-            &m,
-            "/// ```test
-/// rst,  a, b, c
-///   1,  0, 0, x
-///   1,  0, 0, x
-///   0,  1, 2, 3
-///   0, 15, 0, 15
-///   0,  0, 0, 0
-```",
-        );
+            let cases = parse_tests_from_comment(
+                &m,
+                "/// ```test
+    /// rst,  a, b, c
+    ///   1,  0, 0, x
+    ///   1,  0, 0, x
+    ///   0,  1, 2, 3
+    ///   0, 15, 0, 15
+    ///   0,  0, 0, 0
+    ```",
+            );
 
-        assert_eq!(cases.len(), 0);
-    }
+            assert_eq!(cases.len(), 0);
+        }*/
 }

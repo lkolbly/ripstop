@@ -73,6 +73,11 @@ pub enum CompileError {
         module_name: String,
         instance_name: String,
     },
+    LiteralTooBig {
+        context: StringContext,
+        typed_size: usize,
+        literal_size: usize,
+    },
 }
 
 impl From<TreeError> for CompileError {
@@ -127,6 +132,9 @@ impl std::fmt::Debug for CompileError {
             }
             CompileError::UndeclaredModule { module_name, instance_name } => {
                 write!(f, "Could not find module {} instantated as {}", module_name, instance_name)
+            }
+            CompileError::LiteralTooBig { context, typed_size, literal_size } => {
+                include_position(context, &format!("Attempted to add a {literal_size}-bit literal to a {typed_size}-bit variable, which is not permitted"))
             }
         }
     }

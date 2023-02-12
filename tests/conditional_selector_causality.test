@@ -12,5 +12,3 @@ module mux(bit a, bit b, bit sel) -> (bit c) {
 Expression depends on the future on line 3 col 8:
     if sel[t] {
        ^
-
-Variable 'c' not assigned

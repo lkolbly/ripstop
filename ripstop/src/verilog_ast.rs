@@ -1,6 +1,7 @@
 use std::fmt;
 
 use crate::tree::{NodeId, Tree};
+use crate::types::Type;
 
 #[derive(Debug, Clone)]
 pub enum AlwaysBeginTriggerType {
@@ -330,7 +331,10 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
             format!("{whitespace}({condition}) ? ({iftrue}) : ({iffalse})")
         }
         VNode::NumberLiteral { literal } => {
-            let size = literal.size_bits;
+            let size = match literal.ty {
+                Type::Bits { size } => size,
+                _ => panic!("Verilog output can only do bits<N>-type number literals"),
+            };
             let value = literal.value;
             format!("{whitespace}{size}'d{value}")
         }
