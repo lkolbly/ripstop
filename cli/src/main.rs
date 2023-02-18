@@ -116,7 +116,12 @@ fn main() {
                         result.push(line.to_owned());
                     }
                 }
-                input = result.join("\n");
+                if found_code {
+                    input = result.join("\n");
+                } else {
+                    // If we never found the "### CODE", continue like normal
+                    input = lines.join("\n");
+                }
             }
             std::process::exit(compile(input, output));
         }

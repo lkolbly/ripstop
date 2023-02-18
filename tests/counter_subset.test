@@ -2,8 +2,8 @@
 
 module counter_subset() -> (bits<4> out) {
     bits<32> counter;
-    counter[0] = 32'd0;
-    counter[t] = counter[t-1] + 32'd1;
+    counter[0] = 0;
+    counter[t] = counter[t-1] + 1;
     out[t] = counter[t][4:1];
 }
 

@@ -9,12 +9,12 @@ module latch(bit data_in, bit save) -> (bit data_out) {
 }
 
 module instantiate_disallowed(bits<4> a) -> (bits<4> b) {
-    if a[t-1] == 4'd5 {
+    if a[t-1] == 5 {
         instantiate latch as my_latch;
-        latch.data_in[t] = 1'b0;
-        latch.save[t] = 1'b0;
+        latch.data_in[t] = 0;
+        latch.save[t] = 0;
     }
-    b[t] = 4'd5;
+    b[t] = 5;
 }
 
 ### OUTPUT

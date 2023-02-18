@@ -60,7 +60,7 @@ pub fn parse(toparse: &str) -> Result<Tree<ASTNode>, CompileError> {
     let parsed = parsed.next().unwrap();
 
     let mut tree = Tree::<ASTNode>::new();
-    parse_value(&mut tree, parsed);
+    parse_value(&mut tree, parsed)?;
     return Ok(tree);
 
     fn consume_doc_comments<'a>(rules: &'_ mut Pairs<'a, Rule>) -> (String, Pair<'a, Rule>) {
@@ -83,7 +83,10 @@ pub fn parse(toparse: &str) -> Result<Tree<ASTNode>, CompileError> {
         }
     }
 
-    fn parse_value(tree: &mut Tree<ASTNode>, pair: Pair<'_, Rule>) -> Option<NodeId> {
+    fn parse_value(
+        tree: &mut Tree<ASTNode>,
+        pair: Pair<'_, Rule>,
+    ) -> Result<Option<NodeId>, CompileError> {
         let rule = pair.as_rule();
         let mut inner_rules = pair.clone().into_inner();
 
@@ -93,8 +96,8 @@ pub fn parse(toparse: &str) -> Result<Tree<ASTNode>, CompileError> {
                 let (doc_comment, id) = consume_doc_comments(&mut inner_rules);
                 let id = id.as_str().to_string();
 
-                let in_values = parse_variable_declarations(inner_rules.next().unwrap());
-                let out_values = parse_variable_declarations(inner_rules.next().unwrap());
+                let in_values = parse_variable_declarations(inner_rules.next().unwrap())?;
+                let out_values = parse_variable_declarations(inner_rules.next().unwrap())?;
                 Some(ASTNodeType::ModuleDeclaration {
                     id,
                     doc_comment,
@@ -106,8 +109,8 @@ pub fn parse(toparse: &str) -> Result<Tree<ASTNode>, CompileError> {
                 let (doc_comment, id) = consume_doc_comments(&mut inner_rules);
                 let id = id.as_str().to_string();
 
-                let in_values = parse_variable_declarations(inner_rules.next().unwrap());
-                let out_values = parse_variable_declarations(inner_rules.next().unwrap());
+                let in_values = parse_variable_declarations(inner_rules.next().unwrap())?;
+                let out_values = parse_variable_declarations(inner_rules.next().unwrap())?;
                 Some(ASTNodeType::ExternModuleDeclaration {
                     id,
                     doc_comment,
@@ -128,11 +131,16 @@ pub fn parse(toparse: &str) -> Result<Tree<ASTNode>, CompileError> {
                                 Rule::subtraction => -1,
                                 _ => unreachable!(),
                             };
-                            let unsigned: i64 =
-                                NumberLiteral::from_tree(inner_rules.next().unwrap())
-                                    .value
-                                    .try_into()
-                                    .unwrap();
+                            let lit = match NumberLiteral::from_tree(inner_rules.next().unwrap()) {
+                                Ok(x) => x,
+                                Err(e) => {
+                                    return Err(CompileError::NumberParseError {
+                                        error: e,
+                                        context: StringContext::new(inner),
+                                    })
+                                }
+                            };
+                            let unsigned: i64 = lit.value.try_into().unwrap();
                             sign * unsigned
                         }
                         None => 0,
@@ -157,7 +165,7 @@ pub fn parse(toparse: &str) -> Result<Tree<ASTNode>, CompileError> {
             ),
             Rule::binary_operation => None,
             Rule::variable_declaration => Some(ASTNodeType::VariableDeclaration {
-                var_type: parse_type(inner_rules.next().unwrap()),
+                var_type: parse_type(inner_rules.next().unwrap())?,
                 var_id: inner_rules.next().unwrap().as_str().to_string(),
             }),
             Rule::index_expression => {
@@ -167,7 +175,7 @@ pub fn parse(toparse: &str) -> Result<Tree<ASTNode>, CompileError> {
                 //let rules: Vec<_> = inner_rules.collect();
                 //assert_eq!(rules.len(), 2);
 
-                let indexee = parse_value(tree, indexee).unwrap();
+                let indexee = parse_value(tree, indexee)?.unwrap();
 
                 // Get the index
                 let index = match index.as_rule() {
@@ -182,7 +190,7 @@ pub fn parse(toparse: &str) -> Result<Tree<ASTNode>, CompileError> {
                 };
                 let index_node = tree.new_node(ASTNode::new(index, pair));
                 tree.append_to(index_node, indexee).unwrap();
-                return Some(index_node);
+                return Ok(Some(index_node));
             }
             Rule::conditional => Some(ASTNodeType::Conditional),
             Rule::conditional_block => Some(ASTNodeType::Block),
@@ -211,17 +219,27 @@ pub fn parse(toparse: &str) -> Result<Tree<ASTNode>, CompileError> {
                 })
             }
             Rule::struct_variable => {
-                let (t, n) = parse_variable_declaration(inner_rules.next().unwrap());
+                let (t, n) = parse_variable_declaration(inner_rules.next().unwrap())?;
                 Some(ASTNodeType::StructVariable {
                     name: n,
                     member_type: t,
                 })
             }
             Rule::EOI => None,
-            Rule::number_literal => Some(ASTNodeType::NumberLiteral(NumberLiteral::from_tree(
-                pair.clone(),
-            ))),
+            Rule::number_literal => {
+                let lit = match NumberLiteral::from_tree(pair.clone()) {
+                    Ok(x) => x,
+                    Err(e) => {
+                        return Err(CompileError::NumberParseError {
+                            error: e,
+                            context: StringContext::new(pair.clone()),
+                        })
+                    }
+                };
+                Some(ASTNodeType::NumberLiteral(lit))
+            }
             // Hack to not recursively parse number literals
+            Rule::pos_integer => None,
             Rule::full_number_literal => None,
             _ => {
                 println!(
@@ -237,11 +255,11 @@ pub fn parse(toparse: &str) -> Result<Tree<ASTNode>, CompileError> {
             let data = ASTNode::new(n_type, pair);
             let node = tree.new_node(data);
             for child in inner_rules {
-                if let Some(child_node) = parse_value(tree, child) {
+                if let Some(child_node) = parse_value(tree, child)? {
                     tree.append_to(node, child_node).unwrap();
                 }
             }
-            Some(node)
+            Ok(Some(node))
         } else if let Rule::binary_operation = rule {
             let treerc = Rc::new(RefCell::new(tree));
 
@@ -249,6 +267,14 @@ pub fn parse(toparse: &str) -> Result<Tree<ASTNode>, CompileError> {
                 inner_rules.clone(),
                 |pair| parse_value(&mut (*treerc).borrow_mut(), pair),
                 |lhs, op, rhs| {
+                    if lhs.is_err() {
+                        return lhs;
+                    }
+                    if rhs.is_err() {
+                        return rhs;
+                    }
+                    let lhs = lhs.unwrap();
+                    let rhs = rhs.unwrap();
                     let n_type = match op.as_rule() {
                         Rule::addition => ASTNodeType::Add,
                         Rule::subtraction => ASTNodeType::Subtract,
@@ -272,28 +298,31 @@ pub fn parse(toparse: &str) -> Result<Tree<ASTNode>, CompileError> {
                     (&mut (*treerc).borrow_mut())
                         .append_to(child, rhs.unwrap())
                         .unwrap();
-                    Some(child)
+                    Ok(Some(child))
                 },
             )
         } else {
-            None
+            Ok(None)
         }
     }
 
-    fn parse_variable_declarations(pair: Pair<Rule>) -> Vec<(ASTType, String)> {
+    fn parse_variable_declarations(
+        pair: Pair<Rule>,
+    ) -> Result<Vec<(ASTType, String)>, CompileError> {
         return pair.into_inner().map(parse_variable_declaration).collect();
     }
 
-    fn parse_variable_declaration(pair: Pair<Rule>) -> (ASTType, String) {
+    fn parse_variable_declaration(pair: Pair<Rule>) -> Result<(ASTType, String), CompileError> {
         let mut inner_rules = pair.into_inner();
-        return (
-            parse_type(inner_rules.next().unwrap()),
+        return Ok((
+            parse_type(inner_rules.next().unwrap())?,
             inner_rules.next().unwrap().as_str().to_string(),
-        );
+        ));
     }
 
-    fn parse_type(pair: Pair<Rule>) -> ASTType {
+    fn parse_type(pair: Pair<Rule>) -> Result<ASTType, CompileError> {
         let child = pair
+            .clone()
             .into_inner()
             .next()
             .unwrap()
@@ -303,21 +332,28 @@ pub fn parse(toparse: &str) -> Result<Tree<ASTNode>, CompileError> {
         match child.as_rule() {
             Rule::name => {
                 let name = child.as_str();
-                ASTType {
+                Ok(ASTType {
                     name: name.to_string(),
                     generic_parameter: None,
-                }
+                })
             }
             Rule::generic_variable_type => {
                 let mut inner = child.into_inner();
                 let name = inner.next().unwrap();
                 let value = inner.next().unwrap();
-                ASTType {
+                let lit = match NumberLiteral::from_tree(value) {
+                    Ok(x) => x,
+                    Err(e) => {
+                        return Err(CompileError::NumberParseError {
+                            error: e,
+                            context: StringContext::new(pair.clone()),
+                        })
+                    }
+                };
+                Ok(ASTType {
                     name: name.as_str().to_string(),
-                    generic_parameter: Some(
-                        NumberLiteral::from_tree(value).value.try_into().unwrap(),
-                    ),
-                }
+                    generic_parameter: Some(lit.value.try_into().unwrap()),
+                })
             }
             _ => unreachable!(),
         }
@@ -380,7 +416,7 @@ pub struct NumberLiteral {
 }
 
 impl NumberLiteral {
-    fn from_tree(tree: Pair<Rule>) -> Self {
+    fn from_tree(tree: Pair<Rule>) -> Result<Self, Box<dyn std::error::Error>> {
         let full_str = tree.as_str();
 
         let rule = tree.as_rule();
@@ -421,12 +457,19 @@ impl NumberLiteral {
                 }
             }
             Rule::pos_integer => {
-                let int: u128 = full_str.parse().unwrap();
-                return Self {
-                    // TODO: Compute the actual minimum size
-                    ty: Type::Literal { minimum_size: 64 },
-                    value: int,
+                let full_str = full_str.trim();
+                let int: u128 = full_str.parse()?;
+                let min_size = if int == 0 {
+                    1
+                } else {
+                    (int + 1).next_power_of_two().trailing_zeros().try_into()?
                 };
+                return Ok(Self {
+                    ty: Type::Literal {
+                        minimum_size: min_size,
+                    },
+                    value: int,
+                });
             }
             _ => {
                 panic!("Unexpected rule! {:?}", rule);
@@ -435,7 +478,7 @@ impl NumberLiteral {
 
         match (num_bits, base, digits) {
             (Some(num_bits), Some(base), Some(digits)) => {
-                let num_bits: usize = num_bits.as_str().parse().unwrap();
+                let num_bits: usize = num_bits.as_str().parse()?;
                 let base = match base.as_str() {
                     "b" => 2,
                     "o" => 8,
@@ -466,10 +509,10 @@ impl NumberLiteral {
                     panic!("Number was too big!");
                 }
 
-                Self {
+                Ok(Self {
                     ty: Type::Bits { size: num_bits },
                     value,
-                }
+                })
             }
             _ => {
                 unimplemented!();
@@ -571,16 +614,50 @@ mod test {
                     value: 0,
                 },
             ),
-            //("129'h5", NumberLiteral { size_bits: 128, value: 0 }), // This should fail
-            //("1'h2", NumberLiteral { size_bits: 1, value: 0 }), // Too big
-            //("1'h__", NumberLiteral { size_bits: 1, value: 0 }), // This should fail!
-            //("1'h1_", NumberLiteral { size_bits: 1, value: 0 }), // This should fail!
-            //("1'h_1", NumberLiteral { size_bits: 1, value: 0 }), // This should fail!
-            //("128'hffffffff_ffffffff_ffffffff_fffffffff", NumberLiteral { size_bits: 1, value: 0 }), // Too big
-            //("32'hffffffff1", NumberLiteral { size_bits: 1, value: 0 }), // Too big
-            //("32'd123a", NumberLiteral { size_bits: 1, value: 0 }), // This should fail!
-            //("32'b123", NumberLiteral { size_bits: 1, value: 0 }), // Incorrect digit for base
-            //("32'o8", NumberLiteral { size_bits: 1, value: 0 }), // Incorrect digit for base. This should fail!
+            (
+                "5",
+                NumberLiteral {
+                    ty: Type::Literal { minimum_size: 3 },
+                    value: 5,
+                },
+            ),
+            (
+                "32767",
+                NumberLiteral {
+                    ty: Type::Literal { minimum_size: 15 },
+                    value: 32767,
+                },
+            ),
+            (
+                "32768",
+                NumberLiteral {
+                    ty: Type::Literal { minimum_size: 16 },
+                    value: 32768,
+                },
+            ),
+            (
+                "0",
+                NumberLiteral {
+                    ty: Type::Literal { minimum_size: 1 },
+                    value: 0,
+                },
+            ),
+            (
+                "0 ",
+                NumberLiteral {
+                    ty: Type::Literal { minimum_size: 1 },
+                    value: 0,
+                },
+            ), //("129'h5", NumberLiteral { size_bits: 128, value: 0 }), // This should fail
+               //("1'h2", NumberLiteral { size_bits: 1, value: 0 }), // Too big
+               //("1'h__", NumberLiteral { size_bits: 1, value: 0 }), // This should fail!
+               //("1'h1_", NumberLiteral { size_bits: 1, value: 0 }), // This should fail!
+               //("1'h_1", NumberLiteral { size_bits: 1, value: 0 }), // This should fail!
+               //("128'hffffffff_ffffffff_ffffffff_fffffffff", NumberLiteral { size_bits: 1, value: 0 }), // Too big
+               //("32'hffffffff1", NumberLiteral { size_bits: 1, value: 0 }), // Too big
+               //("32'd123a", NumberLiteral { size_bits: 1, value: 0 }), // This should fail!
+               //("32'b123", NumberLiteral { size_bits: 1, value: 0 }), // Incorrect digit for base
+               //("32'o8", NumberLiteral { size_bits: 1, value: 0 }), // Incorrect digit for base. This should fail!
         ];
 
         for (test_case, expected) in tests.iter() {
@@ -590,7 +667,7 @@ mod test {
                 .unwrap();
 
             println!("{:?}", parsed);
-            let literal = NumberLiteral::from_tree(parsed);
+            let literal = NumberLiteral::from_tree(parsed).unwrap();
             println!("{:?}", literal);
             assert_eq!(&literal, expected);
         }

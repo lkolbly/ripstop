@@ -1,10 +1,10 @@
 ### CODE
 
 module nonliteral_reset(bit x) -> (bit y) {
-    y[0] = x[t] + 1'd1;
+    y[0] = x[t] + 1;
 }
 
 ### OUTPUT
 Invalid reset value on line 3 col 17:
-    y[0] = x[t] + 1'd1;
+    y[0] = x[t] + 1;
                 ^

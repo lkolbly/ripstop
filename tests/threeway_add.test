@@ -1,7 +1,7 @@
 ### CODE
 
 module threeway_add(bits<4> a, bits<4> b) -> (bits<4> c) {
-    c[t] = a[t] + b[t] + 4'd1;
+    c[t] = a[t] + b[t] + 1;
 }
 
 ### DATA

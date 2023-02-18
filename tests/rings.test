@@ -1,10 +1,10 @@
 ### CODE
 
 module rings() -> (bits<4> onehot, bits<4> twisted) {
-    onehot[0] = 4'd1;
+    onehot[0] = 1;
     onehot[t] = onehot[t-1][2:0] ++ onehot[t-1][3];
 
-    twisted[0] = 4'd0;
+    twisted[0] = 0;
     twisted[t] = twisted[t-1][2:0] ++ ~twisted[t-1][3];
 }
 

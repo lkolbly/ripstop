@@ -333,6 +333,9 @@ pub fn verilog_ast_to_string(head: NodeId, tree: &Tree<VNode>, num_whitespace: u
         VNode::NumberLiteral { literal } => {
             let size = match literal.ty {
                 Type::Bits { size } => size,
+                // TODO: Determine whether this is permitted
+                // Verilog may e.g. coerce a bits<32> + literal<5> to a 5-bit number!
+                Type::Literal { minimum_size } => minimum_size,
                 _ => panic!("Verilog output can only do bits<N>-type number literals"),
             };
             let value = literal.value;

@@ -1,10 +1,10 @@
 ### CODE
 
 module operator_precedence_comparison(bits<4> a, bits<4> b) -> (bit c) {
-    if a[t] == b[t] + 4'd1 {
-        c[t] = 1'd1;
+    if a[t] == b[t] + 1 {
+        c[t] = 1;
     } else {
-        c[t] = 1'd0;
+        c[t] = 0;
     }
 }
 

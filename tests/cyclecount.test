@@ -1,9 +1,9 @@
 ### CODE
 
 module cyclecount(bit in) -> (bits<4> count) {
-    count[-1] = 4'd0;
+    count[-1] = 0;
     if in[t] {
-        count[t] = count[t-1] + 4'd1;
+        count[t] = count[t-1] + 1;
     }
 }
 

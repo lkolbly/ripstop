@@ -1767,9 +1767,49 @@ impl Module {
                             };
                             let rhs =
                                 Expression::from_ast(ast, ast.get_child_node(*n, 1).unwrap().id);
-                            match rhs.expr {
+                            let (rhs_expr, rhs_type) = rhs.get_type(&HashMap::new()).unwrap();
+                            assert_eq!(rhs_type.len(), 1);
+                            let rhs_type = &rhs_type[0].0;
+
+                            let lhs_type = Expression::debit(variables.get(&lhs.variable).unwrap().clone());
+                            let lhs_bits = match lhs_type {
+                                Type::Bits { size } => {
+                                    size
+                                }
+                                Type::Bit => 1,
+                                _ => {
+                                    panic!("LHS of reset assignment must have bits type");
+                                }
+                            };
+
+                            // Coerce the type, if necessary
+                            let rhs_type = match rhs_type {
+                                Type::Literal { minimum_size } => {
+                                    if *minimum_size > lhs_bits {
+                                        todo!("Throw an error: Reset assignment value is too big for variable");
+                                    } else {
+                                        Type::Bits { size: lhs_bits }
+                                    }
+                                }
+                                x => x.clone(),
+                            };
+
+                            if rhs_type != lhs_type {
+                                todo!("Throw an error: Reset assignment operand has incorrect type lhs={:?} rhs={:?}", lhs_type, rhs_type);
+                            }
+                            match rhs_expr.expr {
                                 LogicalExpression::NumberLiteral(literal) => {
-                                    Some((lhs.variable, (literal, timeval)))
+                                    // Typecheck the reset value
+                                    Some((
+                                        lhs.variable,
+                                        (
+                                            NumberLiteral {
+                                                ty: rhs_type.clone(),
+                                                value: literal.value,
+                                            },
+                                            timeval,
+                                        ),
+                                    ))
                                 }
                                 _ => {
                                     result.error(CompileError::InvalidResetValue {

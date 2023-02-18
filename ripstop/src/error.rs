@@ -2,7 +2,6 @@ use crate::ast::{ASTNode, StringContext};
 use crate::tree::TreeError;
 use crate::types::Type;
 
-#[derive(Clone)]
 pub enum CompileError {
     CouldNotFindASTHead,
     TreeError {
@@ -11,6 +10,10 @@ pub enum CompileError {
     ParseError {
         expected: Vec<String>,
         location: StringContext, //pest::error::LineColLocation,
+    },
+    NumberParseError {
+        error: Box<dyn std::error::Error>,
+        context: StringContext,
     },
     UndeclaredVariable {
         context: StringContext,
@@ -135,6 +138,9 @@ impl std::fmt::Debug for CompileError {
             }
             CompileError::LiteralTooBig { context, typed_size, literal_size } => {
                 include_position(context, &format!("Attempted to add a {literal_size}-bit literal to a {typed_size}-bit variable, which is not permitted"))
+            }
+            CompileError::NumberParseError { error, context } => {
+                include_position(context, &format!("Error: {}", error))
             }
         }
     }
