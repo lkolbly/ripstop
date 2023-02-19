@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 ripstop = { path = "../ripstop" }
 clap = { version = "3.2.16", features = [ "derive" ] }
+env_logger = "0.10.0"

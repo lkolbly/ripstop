@@ -90,6 +90,8 @@ fn compile(input: String, output: Option<std::path::PathBuf>) -> i32 {
 fn main() {
     let args = Args::parse();
 
+    env_logger::init();
+
     match args.command {
         Commands::Build {
             input,

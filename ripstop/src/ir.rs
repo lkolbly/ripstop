@@ -13,6 +13,7 @@ use crate::parse::{NumberLiteral, Range};
 use crate::tree::{NodeId, Tree};
 use crate::types::{Type, TypeDatabase};
 use crate::{logerror, noncriterr};
+use log::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TimeReference {
@@ -641,7 +642,6 @@ impl Expression {
                         let parent_variable = VariablePath {
                             segments: variable.segments[0..i].to_owned(),
                         };
-                        println!("{}", parent_variable.to_string());
                         if let Some(ty) = variables.get(&parent_variable) {
                             parent_var = Some((parent_variable.to_string(), ty.clone()));
                         } else {
@@ -1917,18 +1917,18 @@ impl Module {
                     // Need to destructure into leafs
                     let base_name = VariablePath { segments: vec![] };
                     for (leaf_path, _) in base_name.leaf_paths(ty) {
-                        /*println!(
+                        trace!(
                             "Destructuring {} assignment into {}",
                             varname.to_string(),
                             leaf_path.to_string()
-                        );*/
+                        );
 
                         // The RHS has to be a variable reference (or a struct literal)
                         match &expr.expr {
                             LogicalExpression::VariableReference(varref) => {
                                 let full_leaf_path = leaf_path.put_under(varref.variable.clone());
                                 let target_path = leaf_path.put_under(varname.clone());
-                                //println!("Assigning {} to {}", full_leaf_path.to_string(), target_path);
+                                trace!("Assigning {} to {}", full_leaf_path.to_string(), target_path);
                                 destructured_assignments.insert(target_path, Box::new(Expression {
                                     context: expr.context.clone(),
                                     expr: LogicalExpression::VariableReference(VariableReference {
