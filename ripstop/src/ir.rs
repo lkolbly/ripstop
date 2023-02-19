@@ -636,8 +636,22 @@ impl Expression {
                         vec![(Self::debit(ty.clone()), self.context.clone())],
                     ));
                 } else {
+                    let mut parent_var = None;
+                    for i in 1..variable.segments.len() {
+                        let parent_variable = VariablePath {
+                            segments: variable.segments[0..i].to_owned(),
+                        };
+                        println!("{}", parent_variable.to_string());
+                        if let Some(ty) = variables.get(&parent_variable) {
+                            parent_var = Some((parent_variable.to_string(), ty.clone()));
+                        } else {
+                            break;
+                        }
+                    }
                     result.error(CompileError::UndeclaredVariable {
                         context: self.context.clone(),
+                        variable: variable.to_string(),
+                        parent_var,
                     });
                 }
             }
@@ -1617,7 +1631,7 @@ impl VariablePath {
                     member_path
                         .segments
                         .push(VariablePathSegment::Name(field.name.clone()));
-                    member_path.leaf_paths(&field.member_type)
+                    member_path.child_paths(&field.member_type)
                 })
                 .chain(std::iter::once((self.clone(), ty.clone())))
                 .collect(),
@@ -1854,6 +1868,8 @@ impl Module {
                 None => {
                     result.error(CompileError::UndeclaredVariable {
                         context: new_expr.context.clone(),
+                        variable: varname.to_string(),
+                        parent_var: None,
                     });
                     continue;
                 }
@@ -1883,7 +1899,53 @@ impl Module {
                 new_assignments.insert(varname.clone(), Box::new(new_expr));
             }
         }
-        block.assignments = new_assignments;
+
+        // Destructure struct assignments into the constituant leaf assignments
+        let mut destructured_assignments = HashMap::new();
+        for (varname, expr) in new_assignments.iter() {
+            let ty = match variables.get(varname) {
+                Some(x) => x,
+                None => continue,
+            };
+
+            match ty {
+                Type::Bit | Type::Bits { .. } => {
+                    // Doesn't need destructuring
+                    destructured_assignments.insert(varname.clone(), expr.clone());
+                }
+                Type::Struct(s) => {
+                    // Need to destructure into leafs
+                    let base_name = VariablePath { segments: vec![] };
+                    for (leaf_path, _) in base_name.leaf_paths(ty) {
+                        /*println!(
+                            "Destructuring {} assignment into {}",
+                            varname.to_string(),
+                            leaf_path.to_string()
+                        );*/
+
+                        // The RHS has to be a variable reference (or a struct literal)
+                        match &expr.expr {
+                            LogicalExpression::VariableReference(varref) => {
+                                let full_leaf_path = leaf_path.put_under(varref.variable.clone());
+                                let target_path = leaf_path.put_under(varname.clone());
+                                //println!("Assigning {} to {}", full_leaf_path.to_string(), target_path);
+                                destructured_assignments.insert(target_path, Box::new(Expression {
+                                    context: expr.context.clone(),
+                                    expr: LogicalExpression::VariableReference(VariableReference {
+                                        variable: full_leaf_path,
+                                        time: varref.time.clone(),
+                                    })
+                                }));
+                            }
+                            _ => panic!("RHS of structure assignment must be variable reference or struct literal!"),
+                        }
+                    }
+                }
+                _ => todo!(),
+            }
+        }
+
+        block.assignments = destructured_assignments;
 
         // Don't successfully compile if we had any errors
         if result.errors.len() > 0 {
@@ -1970,5 +2032,47 @@ mod test {
         assert!(paths.iter().all(|path| path.subset_of(&var)));
         assert!(paths.iter().all(|path| !var.subset_of(&path)));
         assert!(paths.iter().all(|path| path.subset_of(&path)));
+    }
+
+    #[test]
+    fn test_path_children() {
+        let var = VariablePath::from_root("foo");
+        let ty = Type::Struct(Arc::new(StructDefinition {
+            name: "some_struct_def".to_string(),
+            fields: vec![
+                StructField {
+                    name: "one_bit".to_string(),
+                    member_type: Type::Bit,
+                },
+                StructField {
+                    name: "some_more_bits".to_string(),
+                    member_type: Type::Bits { size: 16 },
+                },
+                StructField {
+                    name: "another_struct".to_string(),
+                    member_type: Type::Struct(Arc::new(StructDefinition {
+                        name: "second_struct_def".to_string(),
+                        fields: vec![
+                            StructField {
+                                name: "a".to_string(),
+                                member_type: Type::Bits { size: 5 },
+                            },
+                            StructField {
+                                name: "b".to_string(),
+                                member_type: Type::Bit,
+                            },
+                        ],
+                    })),
+                },
+            ],
+        }));
+
+        let paths = var.child_paths(&ty);
+        let paths: Vec<_> = paths.iter().map(|(x, _)| x.clone()).collect();
+
+        for path in paths.iter() {
+            println!("{}", path.to_string());
+        }
+        assert_eq!(paths.len(), 6);
     }
 }

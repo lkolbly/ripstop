@@ -17,6 +17,8 @@ pub enum CompileError {
     },
     UndeclaredVariable {
         context: StringContext,
+        variable: String,
+        parent_var: Option<(String, Type)>,
     },
     ReferenceAfterAssignment {
         context: StringContext,
@@ -97,8 +99,12 @@ impl std::fmt::Debug for CompileError {
             CompileError::CouldNotFindASTHead => write!(f, "Could not find AST head."),
             CompileError::TreeError { err } => write!(f, "Tree error: {:?}", err),
             CompileError::ParseError { expected, location } => include_position(location, &format!("Parse error: Expected one of {:?}", expected)),
-            CompileError::UndeclaredVariable { context } => {
-                include_position(context, "Undeclared variable")
+            CompileError::UndeclaredVariable { context, variable, parent_var } => {
+                include_position(context, &format!("Undeclared variable {}", variable))?;
+                if let Some((parent_var, parent_ty)) = parent_var {
+                    write!(f, "\nNote: Variable {} has type {}", parent_var, parent_ty)?;
+                }
+                Ok(())
             }
             CompileError::ReferenceAfterAssignment { context } => {
                 include_position(context, "Reference too late (you cannot reference a variable at a time offset greater than when it's assigned)")

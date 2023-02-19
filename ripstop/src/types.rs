@@ -26,7 +26,7 @@ impl Display for Type {
             Type::Bit => "bit".to_string(),
             Type::Bits { size } => format!("bits<{size}>"),
             Type::Literal { minimum_size } => format!("int literal ({minimum_size} bits)"),
-            Type::Struct(_) => todo!(),
+            Type::Struct(s) => format!("{}", s.name),
             //Alternatively, `None` could become `_`
             Type::None => "[TYPELESS]".to_string(),
         };
