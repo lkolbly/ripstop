@@ -9,65 +9,6 @@ use crate::{
     verilog_ast::{AlwaysBeginTriggerType, VNode},
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-
-// fn normalize(tree: &mut Tree<ASTNode>) -> Result<(), CompileError> {
-//     let variables = get_referenced_variables_with_highest_and_lowest_t_offset(tree)?;
-
-//     for n in tree.into_iter().collect::<Vec<NodeId>>() {
-//         if let ASTNodeType::VariableReference { var_id, t_offset } = &mut tree[n].data.node_type {
-//             if let Some((lowest_offset, _highest_offset)) = variables.get(var_id) {
-//                 *t_offset -= lowest_offset;
-//             } else {
-//                 return Err(CompileError::UndeclaredVariable {
-//                     context: tree[n].data.context.clone(),
-//                 });
-//             }
-//         }
-//     }
-
-//     Ok(())
-// }
-
-/// Conveniently stores information about the range of time values at which a variable is referenced.
-#[derive(Debug, Clone)]
-struct VarBounds {
-    lowest_ref: i64,
-    highest_ref: i64,
-    highest_assignment: i64,
-    var_scope: VarScope,
-    var_type: Type,
-}
-
-#[derive(Debug, Clone, Copy)]
-enum VarScope {
-    Input,
-    Output,
-    Local,
-}
-
-impl VarBounds {
-    fn new(offset: i64, var_scope: VarScope, var_type: Type) -> VarBounds {
-        VarBounds {
-            lowest_ref: offset,
-            highest_ref: offset,
-            highest_assignment: offset,
-            var_scope,
-            var_type,
-        }
-    }
-
-    /// Update `lowest_ref` and `highest_ref` with a new offset
-    fn update(&mut self, offset: i64) {
-        self.lowest_ref = self.lowest_ref.min(offset);
-        self.highest_ref = self.highest_ref.max(offset);
-    }
-
-    /// Update `highest_assignment` with a new offset
-    fn update_assignment(&mut self, offset: i64) {
-        self.highest_assignment = self.highest_assignment.max(offset);
-    }
-}
 
 struct IrCompilationState {
     next_internal_var_id: usize,
@@ -272,7 +213,7 @@ fn get_type_declarations(tree: &mut Tree<ASTNode>) -> CompileResult<TypeDatabase
         .iter()
         .filter_map(
             |child| match &tree.get_node(*child).unwrap().data.node_type {
-                ASTNodeType::StructDefinition { name } => {
+                ASTNodeType::StructDefinition { .. } => {
                     noncriterr!(result, PrimordialStructDefinition::from_ast(tree, *child))
                 }
                 _ => None,
@@ -311,12 +252,7 @@ fn get_module_declarations(
                     modules.push(module);
                 }
             }
-            ASTNodeType::ExternModuleDeclaration {
-                id,
-                doc_comment,
-                in_values,
-                out_values,
-            } => {
+            ASTNodeType::ExternModuleDeclaration { .. } => {
                 if let Some(module) =
                     noncriterr!(result, ModuleDeclaration::from_ast(tree, *child, types))
                 {

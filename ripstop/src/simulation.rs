@@ -6,7 +6,6 @@ use std::sync::Arc;
 use subprocess::Popen;
 use thiserror::Error;
 
-use crate::ast::*;
 use crate::compile::*;
 use crate::error::CompileError;
 use crate::ir::VariablePath;

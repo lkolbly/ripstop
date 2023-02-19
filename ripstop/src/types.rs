@@ -5,7 +5,6 @@ use crate::error::CompileResult;
 use crate::tree::NodeId;
 use crate::tree::Tree;
 use bimap::BiHashMap;
-use daggy::Walker;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Display;

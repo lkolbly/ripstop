@@ -415,7 +415,6 @@ impl Expression {
 
     fn get_addlike_binary_op_type(
         &self,
-        variables: &HashMap<VariablePath, Type>,
         operator: BinaryOperator,
         lhs: Expression,
         lhs_type: Type,
@@ -492,7 +491,6 @@ impl Expression {
 
     fn get_comparisonlike_binary_op_type(
         &self,
-        variables: &HashMap<VariablePath, Type>,
         operator: BinaryOperator,
         lhs: Expression,
         lhs_type: Type,
@@ -570,13 +568,10 @@ impl Expression {
         result
     }
 
+    /// "Concat"-like binary ops require both sides to be strongly typed
     fn get_concatlike_binary_op_type(
         &self,
-        variables: &HashMap<VariablePath, Type>,
-        operator: BinaryOperator,
-        lhs: Expression,
         lhs_type: Type,
-        rhs: Expression,
         rhs_type: Type,
     ) -> CompileResult<(Expression, Vec<(Type, StringContext)>)> {
         let mut result = CompileResult::new();
@@ -681,7 +676,6 @@ impl Expression {
                     | BinaryOperator::BitwiseOr
                     | BinaryOperator::BitwiseXor => {
                         result = self.get_addlike_binary_op_type(
-                            variables,
                             *operation,
                             lhs,
                             lhs_type.clone(),
@@ -696,7 +690,6 @@ impl Expression {
                     | BinaryOperator::LessEq
                     | BinaryOperator::NotEqual => {
                         result = self.get_comparisonlike_binary_op_type(
-                            variables,
                             *operation,
                             lhs,
                             lhs_type.clone(),
@@ -705,14 +698,8 @@ impl Expression {
                         );
                     }
                     BinaryOperator::Concatenate => {
-                        result = self.get_concatlike_binary_op_type(
-                            variables,
-                            *operation,
-                            lhs,
-                            lhs_type.clone(),
-                            rhs,
-                            rhs_type.clone(),
-                        );
+                        result =
+                            self.get_concatlike_binary_op_type(lhs_type.clone(), rhs_type.clone());
                     }
                 }
             }
@@ -721,7 +708,7 @@ impl Expression {
                 operatee,
             } => {
                 // For now, unary operations are simple: The operand must be a bits type
-                let (operand, operand_type) = logerror!(result, operatee.get_type(variables));
+                let (_, operand_type) = logerror!(result, operatee.get_type(variables));
                 let operand_type = Self::debit(operand_type[0].0.clone());
 
                 match operand_type {
@@ -1287,7 +1274,10 @@ impl Block {
                 }
                 ASTNodeType::ModuleInstantiation { module, instance } => {
                     if !declaration_allowed {
-                        panic!("Module instantiation not allowed in this context");
+                        panic!(
+                            "Instantiating {} as {} not allowed in this context",
+                            module, instance
+                        );
                     }
                     // Otherwise, we purposefully ignore this
                 }
@@ -1878,7 +1868,7 @@ impl Module {
             let var_type = &var_type;
             if expr_type.len() > 1 {
                 // Couldn't unify the types, emit an error for each incorrect one
-                for (ty, context) in expr_type.iter() {
+                for (ty, _context) in expr_type.iter() {
                     if ty != var_type {
                         result.error(CompileError::MismatchedTypes {
                             context: new_expr.context.clone(),
@@ -1913,7 +1903,7 @@ impl Module {
                     // Doesn't need destructuring
                     destructured_assignments.insert(varname.clone(), expr.clone());
                 }
-                Type::Struct(s) => {
+                Type::Struct(_) => {
                     // Need to destructure into leafs
                     let base_name = VariablePath { segments: vec![] };
                     for (leaf_path, _) in base_name.leaf_paths(ty) {
