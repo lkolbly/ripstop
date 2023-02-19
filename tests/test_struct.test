@@ -1,0 +1,94 @@
+### CODE
+
+struct some_numbers {
+    bits<8> a;
+    bits<8> b;
+    bits<8> c;
+}
+
+struct maybe_some_numbers {
+    bit valid;
+    some_numbers numbers;
+}
+
+struct maybe_number {
+    bit valid;
+    bits<8> value;
+}
+
+struct maybe_10bit {
+    bit valid;
+    bits<10> value;
+}
+
+module sum_some_numbers(some_numbers numbers) -> (bits<10> sum) {
+    sum[t] = (2'd0 ++ numbers.a[t]) + (2'd0 ++ numbers.b[t]) + (2'd0 ++ numbers.c[t]);
+}
+
+module maybe_sum_some_numbers(maybe_some_numbers numbers) -> (maybe_10bit sum) {
+    instantiate sum_some_numbers as summer;
+
+    summer.numbers[t] = numbers.numbers[t];
+    sum.value[t] = summer.sum[t];
+
+    sum.valid[t] = numbers.valid[t];
+}
+
+module structify_some_numbers(maybe_number a, maybe_number b, maybe_number c) -> (maybe_some_numbers numbers) {
+    // This is a verbose workaround, see if_compound_condition
+    if a.valid[t] == 1 {
+        if b.valid[t] == 1 {
+            if c.valid[t] == 1 {
+                numbers.valid[t] = 1;
+            } else {
+                numbers.valid[t] = 0;
+            }
+        } else {
+            numbers.valid[t] = 0;
+        }
+    } else {
+        numbers.valid[t] = 0;
+    }
+
+    numbers.numbers.a[t] = a.value[t];
+    numbers.numbers.b[t] = b.value[t];
+    numbers.numbers.c[t] = c.value[t];
+}
+
+module maybeify_number(bit valid, bits<8> value) -> (maybe_number result) {
+    result.valid[t] = valid[t];
+    result.value[t] = value[t];
+}
+
+module test_struct(bit a_valid, bits<8> a, bit b_valid, bits<8> b, bit c_valid, bits<8> c) -> (bit result_valid, bits<10> result) {
+    instantiate maybeify_number as maybe_a;
+    instantiate maybeify_number as maybe_b;
+    instantiate maybeify_number as maybe_c;
+
+    maybe_a.valid[t] = a_valid[t];
+    maybe_a.value[t] = a[t];
+
+    maybe_b.valid[t] = b_valid[t];
+    maybe_b.value[t] = b[t];
+
+    maybe_c.valid[t] = c_valid[t];
+    maybe_c.value[t] = c[t];
+
+    instantiate structify_some_numbers as structified;
+
+    structified.a[t] = maybe_a.result[t];
+    structified.b[t] = maybe_b.result[t];
+    structified.c[t] = maybe_c.result[t];
+
+    instantiate maybe_sum_some_numbers as sum;
+
+    sum.numbers[t] = structified.numbers[t];
+
+    result_valid[t] = sum.sum.valid[t];
+    result[t] = sum.sum.value[t];
+}
+
+### DATA
+rst,a_valid in 1,a in 8,b_valid in 1,b in 8,c_valid in 1,c in 8,result_valid out 1,result out 10
+1, 0,0,  0,0,   0,0,  0,x
+0, 1,10, 1,100, 1,25, 1,135
