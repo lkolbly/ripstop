@@ -102,10 +102,12 @@ fn main() {
                 let lines: Vec<_> = input.split("\n").collect();
                 let mut result = vec![];
                 let mut found_code = false;
+                let mut is_actually_test = false;
                 for line in lines.iter() {
                     if line.starts_with("###") {
                         if line.contains("### CODE") {
                             found_code = true;
+                            is_actually_test = true;
                             continue;
                         } else {
                             found_code = false;
@@ -116,7 +118,7 @@ fn main() {
                         result.push(line.to_owned());
                     }
                 }
-                if found_code {
+                if is_actually_test {
                     input = result.join("\n");
                 } else {
                     // If we never found the "### CODE", continue like normal
