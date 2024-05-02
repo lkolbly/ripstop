@@ -2,7 +2,9 @@
 
 This is the source code repository for Ripstop, a ⚠️highly experimental⚠️ hardware description language (a more modern alternative for Verilog or VHDL).
 
-In fact, this language is so experimental right now, that you shouldn't even try using it. It's too early even for early adopters. Check back in early 2023 - we'll have some cool stuff for you then!
+In fact, this language is so experimental right now, that you should probably only try it if an Authorized Ripstop Representative is holding your hand. It's pretty early even for early adopters. So, you know, be careful if you try to use it for anything safety-critical.
+
+Feel free to open issues and/or PRs!
 
 # Usage
 
